@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Domotique - Températures{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-thermometer-half text-danger"></i> Températures de la maison</h1>
+    <span class="badge bg-secondary">Mise à jour en temps réel</span>
+</div>
+
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    {% for mesure in mesures %}
+    <div class="col">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-house-door me-2"></i>{{ mesure.piece }}
+                </h5>
+                <small class="text-muted" style="color: #adb5bd !important;">
+                    LQI: {{ mesure.linkquality }}
+                </small>
+            </div>
+            <div class="card-body text-center py-4">
+                <div class="display-4 fw-bold text-dark mb-2">
+                    {{ "%.1f"|format(mesure.temperature) }}°C
+                </div>
+                <div class="fs-5 text-muted mb-3">
+                    <i class="bi bi-droplet-fill text-primary me-1"></i>Humidité : {{ mesure.humidity }}%
+                </div>
+            </div>
+            <div class="card-footer bg-light d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                    <i class="bi bi-clock me-1"></i>{{ mesure.timestamp.strftime('%H:%M') }}
+                </small>
+                <small class="text-muted">
+                    <i class="bi bi-battery-full {% if mesure.battery < 20 %}text-danger fw-bold{% else %}text-success{% endif %} me-1"></i>{{ mesure.battery }}%
+                </small>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>Aucune donnée n'a encore été enregistrée dans la base de données.
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
