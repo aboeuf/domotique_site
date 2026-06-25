@@ -55,8 +55,21 @@
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header bg-dark text-white">
-                    <h5 class="modal-title" id="historyModalLabel">
-                        <i class="bi bi-graph-up me-2"></i>Historique : <span id="modalPieName"></span>
+                    <h5 class="modal-title d-flex align-items-center text-nowrap"
+                        id="historyModalLabel"
+                        style="max-width: calc(100% - 40px);
+                               overflow: hidden">
+                        <i class="bi bi-graph-up me-2"></i>
+                        <span class="d-none d-sm-inline">Historique&nbsp;:</span>
+                        <select id="modalPieceSelect"
+                                class="form-select form-select-sm d-inline-block ms-0 ms-sm-2 bg-dark text-white border-secondary fs-5 py-0"
+                                style="width: auto;
+                                       max-width: 280px;
+                                       text-overflow: ellipsis">
+                            {% for m in mesures %}
+                                <option value="{{ m.sensor_id }}">{{ m.piece }}</option>
+                            {% endfor %}
+                        </select>
                     </h5>
                     <button type="button"
                             class="btn-close btn-close-white"
@@ -82,7 +95,8 @@
                             <select id="customValueSelect" class="form-select form-select-sm"></select>
                         </div>
                     </div>
-                    <div id="mobileTooltipBanner" class="p-2 mb-2 bg-dark text-white rounded text-center small d-none">
+                    <div id="mobileTooltipBanner"
+                         class="p-2 mb-2 bg-dark text-white rounded text-center small d-none">
                         <span id="customTime" class="fw-bold me-3"></span>
                         <span class="text-danger me-3"><i class="bi bi-thermometer-half"></i> <span id="customTemp"></span>°C</span>
                         <span class="text-info"><i class="bi bi-droplet-fill"></i> <span id="customHum"></span>%</span>
@@ -244,21 +258,19 @@ timePreset.addEventListener('change', function() {
 
 customValueSelect.addEventListener('change', updateChartBounds);
 
-historyModal.addEventListener('show.bs.modal', function (event) {
-    const card = event.relatedTarget;
-    const sensorId = card.getAttribute('data-sensor-id');
-    const sensorName = card.getAttribute('data-sensor-name');
-    
-    document.getElementById('modalPieName').textContent = sensorName;
-    
-    timePreset.value = '24h';
-    customSelectContainer.classList.add('d-none');
-    
+const modalPieceSelect = document.getElementById('modalPieceSelect');
+
+// Fonction réutilisable pour charger les données d'un capteur spécifique
+function loadHistory(sensorId) {
     fetch(`/domotique/api/history/${sensorId}`)
         .then(response => response.json())
         .then(data => {
             if (data.length === 0) {
                 earliestDate = new Date();
+                if (historyChart) {
+                    historyChart.destroy();
+                    historyChart = null;
+                }
                 return;
             }
 
@@ -308,33 +320,57 @@ historyModal.addEventListener('show.bs.modal', function (event) {
                         mode: 'index',
                         intersect: false
                     },
+                    plugins: {
+                        tooltip: {
+                            enabled: false, // Ton option 3 : bandeau externe
+                            external: function(context) {
+                                const banner = document.getElementById('mobileTooltipBanner');
+                                const tooltipModel = context.tooltip;
+                                if (tooltipModel.opacity === 0) return;
+
+                                if (tooltipModel.body) {
+                                    const title = tooltipModel.title[0] || '';
+                                    let temp = '--';
+                                    let hum = '--';
+                                    tooltipModel.dataPoints.forEach(pt => {
+                                        if (pt.datasetIndex === 0) temp = pt.formattedValue;
+                                        if (pt.datasetIndex === 1) hum = pt.formattedValue;
+                                    });
+                                    document.getElementById('customTime').textContent = title;
+                                    document.getElementById('customTemp').textContent = temp;
+                                    document.getElementById('customHum').textContent = hum;
+                                    banner.classList.remove('d-none');
+                                }
+                            }
+                        },
+                        zoom: {
+                            pan: { enabled: true, mode: 'x' },
+                            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+                        }
+                    },
                     scales: {
                         x: {
                             type: 'time',
-                            time: {
-                                tooltipFormat: 'dd/MM/yyyy HH:mm:ss'
-                            },
+                            time: { tooltipFormat: 'dd/MM/yyyy HH:mm:ss' },
                             afterBuildTicks: function(axis) {
                                 const min = new Date(axis.min).getTime();
                                 const max = new Date(axis.max).getTime();
-
                                 if (isNaN(min) || isNaN(max)) return;
 
                                 const delta = max - min;
                             
                                 let step = null;
                                 for (let i = 0; i < STEPS.length; i++) {
-                                    const nb_ticks = delta / STEPS[i][0]
+                                    const nb_ticks = delta / STEPS[i][0];
                                     if (nb_ticks <= NB_TICKS_MAX) {
                                         step = STEPS[i][0];
                                         break;
                                     }
                                 }
+                                if (!step) return;
 
-                                if (!step) return
-
-                                let start_date = new Date(min)
-                                start_date.setHours(0, 0, 0, 0)            
+                                let start_date = new Date(min);
+                                start_date.setHours(0, 0, 0, 0);            
 
                                 let customTicks = [];
                                 for (let time = start_date.getTime(); time <= max; time += step) {
@@ -342,22 +378,19 @@ historyModal.addEventListener('show.bs.modal', function (event) {
                                         customTicks.push({ value: time });
                                     }
                                 }
-
                                 axis.ticks = customTicks;
                             },
                             ticks: {
                                 callback: function(value, index, ticks) {
-                                    if (!ticks || ticks.length < 2) return '';
-
+                                    if (!ticks || ticks.length === 0) return '';
                                     const date = new Date(value);
-                                    const step = ticks[1].value - ticks[0].value;
+                                    const step = ticks.length > 1 ? (ticks[1].value - ticks[0].value) : ONE_DAY;
 
                                     for (let i = 0; i < STEPS.length; i++) {
                                         if (step <= STEPS[i][0]) {
                                             return STEPS[i][1].format(date);
                                         }
                                     }
-
                                     return STEPS[STEPS.length - 1][1].format(date);
                                 }
                             },
@@ -365,65 +398,12 @@ historyModal.addEventListener('show.bs.modal', function (event) {
                             grid: { color: 'rgba(0, 0, 0, 0.05)' }
                         },
                         'y-temp': {
-                            type: 'linear',
-                            position: 'left',
-                            title: { display: true, text: 'Température (°C)' },
-                            suggestedMin: 15,
-                            suggestedMax: 30
+                            type: 'linear', position: 'left', title: { display: true, text: 'Température (°C)' },
+                            suggestedMin: 15, suggestedMax: 30
                         },
                         'y-hum': {
-                            type: 'linear',
-                            position: 'right',
-                            title: { display: true, text: 'Humidité (%)' },
-                            suggestedMin: 30,
-                            suggestedMax: 90,
-                            grid: { drawOnChartArea: false }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            enabled: false,
-                            external: function(context) {
-                                const banner = document.getElementById('mobileTooltipBanner');
-                                const tooltipModel = context.tooltip;
-
-                                // Si aucun point n'est survolé/sélectionné
-                                if (tooltipModel.opacity === 0) {
-                                    // Optionnel : tu peux masquer le bandeau ou laisser les dernières valeurs affichées
-                                    return;
-                                }
-
-                                if (tooltipModel.body) {
-                                    const title = tooltipModel.title[0] || '';
-                                    let temp = '--';
-                                    let hum = '--';
-
-                                    // On extrait les valeurs formatées de chaque courbe
-                                    tooltipModel.dataPoints.forEach(pt => {
-                                        if (pt.datasetIndex === 0) temp = pt.formattedValue; // Température
-                                        if (pt.datasetIndex === 1) hum = pt.formattedValue;  // Humidité
-                                    });
-
-                                    // On met à jour les éléments HTML du bandeau
-                                    document.getElementById('customTime').textContent = title;
-                                    document.getElementById('customTemp').textContent = temp;
-                                    document.getElementById('customHum').textContent = hum;
-                                    
-                                    // On affiche le bandeau
-                                    banner.classList.remove('d-none');
-                                }
-                            }
-                        },
-                        zoom: {
-                            pan: { 
-                                enabled: true, 
-                                mode: 'x'
-                            },
-                            zoom: {
-                                wheel: { enabled: true },
-                                pinch: { enabled: true },
-                                mode: 'x'
-                            }
+                            type: 'linear', position: 'right', title: { display: true, text: 'Humidité (%)' },
+                            suggestedMin: 30, suggestedMax: 90, grid: { drawOnChartArea: false }
                         }
                     }
                 }
@@ -434,6 +414,30 @@ historyModal.addEventListener('show.bs.modal', function (event) {
         .catch(error => {
             console.error('Erreur lors de la récupération de l\'historique:', error);
         });
+}
+
+// 1. Événement déclenché lors du clic sur une carte (ouverture de la modal)
+historyModal.addEventListener('show.bs.modal', function (event) {
+    const card = event.relatedTarget;
+    if (!card) return;
+
+    const sensorId = card.getAttribute('data-sensor-id');
+    
+    // Positionne le menu déroulant sur la bonne pièce
+    modalPieceSelect.value = sensorId;
+    
+    // Réinitialise la période par défaut à chaque ouverture de carte
+    timePreset.value = '24h';
+    customSelectContainer.classList.add('d-none');
+    
+    loadHistory(sensorId);
 });
+
+// 2. Événement déclenché lorsque l'on change de pièce DEPUIS le menu déroulant de la modal
+modalPieceSelect.addEventListener('change', function() {
+    // On charge le graphique de la nouvelle pièce en conservant la période sélectionnée (24h, 1m, etc.)
+    loadHistory(this.value);
+});
+
     </script>
 {% endblock %}
