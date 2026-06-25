@@ -77,6 +77,7 @@
                             <option value="24h">Dernières 24 heures</option>
                             <option value="1m">Dernier mois</option>
                             <option value="1y">Dernière année</option>
+                            <option value="all">Tout</option>
                             <option value="custom_month">Un mois particulier...</option>
                             <option value="custom_year">Une année particulière...</option>
                         </select>
@@ -129,6 +130,9 @@ function updateChartBounds() {
         case '1y':
             minDate.setFullYear(now.getFullYear() - 1);
             break;
+        case 'all':
+            minDate = new Date(earliestDate);
+            break;
         case 'custom_month':
             const [yearM, monthM] = customValueSelect.value.split('-').map(Number);
             minDate = new Date(yearM, monthM, 1, 0, 0, 0, 0);
@@ -147,14 +151,9 @@ function updateChartBounds() {
     if (maxDate < earliestDate) {
         maxDate = new Date(earliestDate);
     }
-
-    // On applique uniquement les limites temporelles
     historyChart.options.scales.x.min = minDate.toISOString();
     historyChart.options.scales.x.max = maxDate.toISOString();
-    
-    // CORRECTION : On NE force PLUS la propriété .time.unit ici. 
-    // On laisse Chart.js recalculer l'unité idéale automatiquement à chaque rafraîchissement.
-    
+        
     historyChart.update();
 }
 
