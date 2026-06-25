@@ -12,11 +12,11 @@
                  data-bs-toggle="modal" 
                  data-bs-target="#historyModal" 
                  data-sensor-id="{{ mesure.sensor_id }}" 
-                 data-sensor-name="{{ mesure.friendly_name }}">
+                 data-sensor-name="{{ mesure.piece }}">
                  
                 <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0 text-capitalize">
-                        <i class="bi bi-house-door me-2"></i>{{ mesure.friendly_name }}
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-house-door me-2"></i>{{ mesure.piece }}
                     </h5>
                     <small class="text-muted" style="color: #adb5bd !important;">
                         LQI: {{ mesure.linkquality }}
@@ -64,19 +64,33 @@
                 <h5 class="modal-title" id="historyModalLabel">
                     <i class="bi bi-graph-up me-2"></i>Historique : <span id="modalPieName"></span>
                 </h5>
-                <div class="d-flex align-items-center">
-                    <button type="button" class="btn btn-sm btn-outline-light me-3" id="btnResetZoom">
-                        <i class="bi bi-arrows-angle-contract me-1"></i>Dernières 24h
-                    </button>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                
+                <div class="row g-2 mb-3 align-items-center bg-light p-2 rounded border">
+                    <div class="col-auto">
+                        <label for="timePreset" class="small fw-bold text-muted">Période :</label>
+                    </div>
+                    <div class="col-auto">
+                        <select id="timePreset" class="form-select form-select-sm">
+                            <option value="24h">Dernières 24 heures</option>
+                            <option value="1m">Dernier mois</option>
+                            <option value="1y">Dernière année</option>
+                            <option value="custom_month">Un mois particulier...</option>
+                            <option value="custom_year">Une année particulière...</option>
+                        </select>
+                    </div>
+                    <div class="col-auto d-none" id="customSelectContainer">
+                        <select id="customValueSelect" class="form-select form-select-sm"></select>
+                    </div>
+                </div>
+
                 <div style="position: relative; width: 100%; height: 400px;">
                     <canvas id="historyChart"></canvas>
                 </div>
                 <div class="text-center text-muted small mt-2">
-                    <i class="bi bi-info-circle me-1"></i> Utilisez la molette pour <strong>zoomer</strong> et glissez pour vous <strong>déplacer</strong> dans le temps.
+                    <i class="bi bi-info-circle me-1"></i> Utilisez la molette pour <strong>zoomer</strong> et glissez pour vous <strong>déplacer</strong> horizontalement.
                 </div>
             </div>
         </div>
@@ -91,19 +105,104 @@
 
 <script>
 let historyChart = null;
+let earliestDate = null; 
 const historyModal = document.getElementById('historyModal');
+const timePreset = document.getElementById('timePreset');
+const customSelectContainer = document.getElementById('customSelectContainer');
+const customValueSelect = document.getElementById('customValueSelect');
 
-// Calcul des bornes par défaut (Dernières 24h)
-function getBounds24h() {
+function updateChartBounds() {
+    if (!historyChart || !earliestDate) return;
+
+    const preset = timePreset.value;
     const now = new Date();
-    const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
-    return {
-        min: twentyFourHoursAgo.toISOString(),
-        max: now.toISOString()
-    };
+    let minDate = new Date();
+    let maxDate = new Date(now);
+
+    switch (preset) {
+        case '24h':
+            minDate.setTime(now.getTime() - (24 * 60 * 60 * 1000));
+            break;
+        case '1m':
+            minDate.setMonth(now.getMonth() - 1);
+            break;
+        case '1y':
+            minDate.setFullYear(now.getFullYear() - 1);
+            break;
+        case 'custom_month':
+            const [yearM, monthM] = customValueSelect.value.split('-').map(Number);
+            minDate = new Date(yearM, monthM, 1, 0, 0, 0, 0);
+            maxDate = new Date(yearM, monthM + 1, 0, 23, 59, 59, 999);
+            break;
+        case 'custom_year':
+            const yearY = Number(customValueSelect.value);
+            minDate = new Date(yearY, 0, 1, 0, 0, 0, 0);
+            maxDate = new Date(yearY, 11, 31, 23, 59, 59, 999);
+            break;
+    }
+
+    if (minDate < earliestDate) {
+        minDate = new Date(earliestDate);
+    }
+    if (maxDate < earliestDate) {
+        maxDate = new Date(earliestDate);
+    }
+
+    historyChart.options.scales.x.min = minDate.toISOString();
+    historyChart.options.scales.x.max = maxDate.toISOString();
+    historyChart.update();
 }
 
-// Événement déclenché à l'ouverture de la modale
+function populateMonths() {
+    customValueSelect.innerHTML = '';
+    const now = new Date();
+    let current = new Date(now.getFullYear(), now.getMonth(), 1);
+    const start = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
+    
+    const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+    
+    while (current >= start) {
+        const y = current.getFullYear();
+        const m = current.getMonth();
+        const opt = document.createElement('option');
+        opt.value = `${y}-${m}`;
+        opt.textContent = `${monthNames[m]} ${y}`;
+        customValueSelect.appendChild(opt);
+        
+        current.setMonth(current.getMonth() - 1);
+    }
+}
+
+function populateYears() {
+    customValueSelect.innerHTML = '';
+    const now = new Date();
+    const startYear = earliestDate.getFullYear();
+    const endYear = now.getFullYear();
+    
+    for (let y = endYear; y >= startYear; y--) {
+        const opt = document.createElement('option');
+        opt.value = `${y}`;
+        opt.textContent = `${y}`;
+        customValueSelect.appendChild(opt);
+    }
+}
+
+timePreset.addEventListener('change', function() {
+    const val = this.value;
+    if (val === 'custom_month') {
+        populateMonths();
+        customSelectContainer.classList.remove('d-none');
+    } else if (val === 'custom_year') {
+        populateYears();
+        customSelectContainer.classList.remove('d-none');
+    } else {
+        customSelectContainer.classList.add('d-none');
+    }
+    updateChartBounds();
+});
+
+customValueSelect.addEventListener('change', updateChartBounds);
+
 historyModal.addEventListener('show.bs.modal', function (event) {
     const card = event.relatedTarget;
     const sensorId = card.getAttribute('data-sensor-id');
@@ -111,9 +210,19 @@ historyModal.addEventListener('show.bs.modal', function (event) {
     
     document.getElementById('modalPieName').textContent = sensorName;
     
+    timePreset.value = '24h';
+    customSelectContainer.classList.add('d-none');
+    
     fetch(`/domotique/api/history/${sensorId}`)
         .then(response => response.json())
         .then(data => {
+            if (data.length === 0) {
+                earliestDate = new Date();
+                return;
+            }
+
+            earliestDate = new Date(data[0].timestamp);
+
             const tempPoints = data.map(row => ({ x: row.timestamp, y: row.temperature }));
             const humPoints = data.map(row => ({ x: row.timestamp, y: row.humidity }));
             
@@ -122,8 +231,6 @@ historyModal.addEventListener('show.bs.modal', function (event) {
             if (historyChart) {
                 historyChart.destroy();
             }
-            
-            const defaultBounds = getBounds24h();
             
             historyChart = new Chart(ctx, {
                 type: 'line',
@@ -137,7 +244,8 @@ historyModal.addEventListener('show.bs.modal', function (event) {
                             borderWidth: 2,
                             yAxisID: 'y-temp',
                             tension: 0.3,
-                            pointRadius: 1
+                            pointRadius: 1,
+                            pointHitRadius: 20 
                         },
                         {
                             label: 'Humidité (%)',
@@ -147,21 +255,24 @@ historyModal.addEventListener('show.bs.modal', function (event) {
                             borderWidth: 2,
                             yAxisID: 'y-hum',
                             tension: 0.3,
-                            pointRadius: 1
+                            pointRadius: 1,
+                            pointHitRadius: 20
                         }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
                     scales: {
                         x: {
                             type: 'time',
-                            min: defaultBounds.min,
-                            max: defaultBounds.max,
                             time: {
                                 unit: 'hour',
-                                displayFormats: { hour: 'HH:mm' },
+                                displayFormats: { hour: 'HH:mm', day: 'dd/MM' },
                                 tooltipFormat: 'dd/MM HH:mm'
                             },
                             title: { display: true, text: 'Temps' },
@@ -185,37 +296,25 @@ historyModal.addEventListener('show.bs.modal', function (event) {
                     },
                     plugins: {
                         zoom: {
-                            pan: {
-                                enabled: true,
+                            pan: { 
+                                enabled: true, 
                                 mode: 'x'
                             },
                             zoom: {
-                                wheel: {
-                                    enabled: true
-                                },
-                                pinch: {
-                                    enabled: true
-                                },
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
                                 mode: 'x'
                             }
                         }
                     }
                 }
             });
+
+            updateChartBounds();
         })
         .catch(error => {
             console.error('Erreur lors de la récupération de l\'historique:', error);
         });
-});
-
-// Action du bouton de réinitialisation du zoom (Correction du commentaire faite ici)
-document.getElementById('btnResetZoom').addEventListener('click', function() {
-    if (historyChart) {
-        const bounds = getBounds24h();
-        historyChart.options.scales.x.min = bounds.min;
-        historyChart.options.scales.x.max = bounds.max;
-        historyChart.update();
-    }
 });
 </script>
 {% endblock %}
