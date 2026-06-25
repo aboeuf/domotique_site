@@ -10,10 +10,9 @@
         <h1 class="mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span><i class="bi bi-thermometer-half me-2"></i>Tableau de bord Domotique</span>
             <div class="d-flex gap-2">
-                <a href="{{ url_for("domotique.domotique_export_json") }}"
-                   class="btn btn-sm btn-outline-primary">
+                <button id="exportJsonBtn" class="btn btn-sm btn-outline-primary">
                     <i class="bi bi-download me-1"></i>Exporter l'historique
-                </a>
+                </button>
                 <button id="toggleSortBtn" class="btn btn-sm btn-outline-secondary">
                     <i class="bi bi-arrows-move me-1"></i>Organiser les pièces
                 </button>
@@ -591,69 +590,108 @@ modalPieceSelect.addEventListener('change', function() {
     loadHistory(this.value);
 });
 
-// =================================
+// ==========================================
+// FONCTION UTILITAIRE DE SAUVEGARDE (AVEC PROMPT)
+// ==========================================
+async function saveFileWithPrompt(content, defaultFileName, mimeType, extensionDescription, extension) {
+    // Si l'API moderne showSaveFilePicker est disponible dans le navigateur
+    if ('showSaveFilePicker' in window) {
+        try {
+            const acceptTypes = {};
+            acceptTypes[mimeType] = [extension];
+
+            const handle = await window.showSaveFilePicker({
+                suggestedName: defaultFileName,
+                types: [{
+                    description: extensionDescription,
+                    accept: acceptTypes
+                }]
+            });
+            
+            const writable = await handle.createWritable();
+            await writable.write(content);
+            await writable.close();
+        } catch (err) {
+            // L'utilisateur a simplement cliqué sur "Annuler", on ne fait rien
+            if (err.name !== 'AbortError') {
+                console.error("Erreur lors de la sauvegarde :", err);
+            }
+        }
+    } else {
+        // Fallback pour les navigateurs non compatibles : téléchargement classique standard
+        const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", defaultFileName);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
+
+// ==========================================
 // EXPORT CSV DE LA PÉRIODE AFFICHÉE
-// =================================
+// ==========================================
 document.getElementById('exportCsvBtn').addEventListener('click', function() {
-    // Vérification que le graphique existe et contient des données
     if (!historyChart || !historyChart.data.datasets[0].data.length) {
         alert("Aucune donnée disponible pour l'export.");
         return;
     }
 
-    // Récupération des bornes temporelles actuellement affichées sur le graphique
     const minBounds = historyChart.options.scales.x.min ? new Date(historyChart.options.scales.x.min) : null;
     const maxBounds = historyChart.options.scales.x.max ? new Date(historyChart.options.scales.x.max) : null;
 
     const tempPoints = historyChart.data.datasets[0].data;
     const humPoints = historyChart.data.datasets[1].data;
 
-    // En-tête du fichier CSV avec séparateur virgule
     let csvRows = ['Date et Heure,Temperature (°C),Humidite (%)'];
 
-    // Parcours et filtrage des données
     for (let i = 0; i < tempPoints.length; i++) {
         const pointDate = new Date(tempPoints[i].x);
-
-        // On ignore les points qui sortent des bornes affichées
         if (minBounds && pointDate < minBounds) continue;
         if (maxBounds && pointDate > maxBounds) continue;
 
         const timestampStr = tempPoints[i].x;
-        
-        // .toFixed(1) conserve naturellement le point comme marqueur décimal
         const tempStr = tempPoints[i].y.toFixed(1);
         const humStr = humPoints[i].y.toFixed(1);
 
-        // Assemblage de la ligne avec des virgules
         csvRows.push(`${timestampStr},${tempStr},${humStr}`);
     }
 
-    // Sécurité si aucun point n'est dans la plage
     if (csvRows.length <= 1) {
         alert("Aucune donnée dans la plage de temps affichée.");
         return;
     }
 
-    // Génération du contenu CSV (sans le BOM UTF-8 qui est plutôt destiné aux spécificités d'Excel FR)
     const csvContent = csvRows.join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-
-    // Nommage dynamique du fichier
     const roomName = modalPieceSelect.options[modalPieceSelect.selectedIndex].text;
     const cleanRoomName = roomName.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const activePreset = timePreset.value;
     const fileName = `historique_${cleanRoomName}_${activePreset}.csv`;
 
-    // Déclenchement du téléchargement natif
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", fileName);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Appel de la fonction avec demande de chemin
+    saveFileWithPrompt(csvContent, fileName, 'text/csv', 'Fichier CSV', '.csv');
+});
+
+// ==========================================
+// EXPORT JSON COMPLET DE TOUS LES CAPTEURS
+// ==========================================
+document.getElementById('exportJsonBtn').addEventListener('click', async function() {
+    try {
+        // Récupération asynchrone des données depuis la route Flask existante
+        const response = await fetch("{{ url_for('domotique.domotique_export_json') }}");
+        if (!response.ok) throw new Error("Impossible de récupérer les données du serveur.");
+        
+        const jsonData = await response.text();
+        const fileName = 'historique_domotique.json';
+
+        // Appel de la fonction avec demande de chemin
+        await saveFileWithPrompt(jsonData, fileName, 'application/json', 'Fichier JSON', '.json');
+    } catch (err) {
+        alert("Erreur lors de l'export JSON : " + err.message);
+    }
 });
     </script>
 {% endblock %}
