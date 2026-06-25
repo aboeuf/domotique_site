@@ -148,8 +148,13 @@ function updateChartBounds() {
         maxDate = new Date(earliestDate);
     }
 
+    // On applique uniquement les limites temporelles
     historyChart.options.scales.x.min = minDate.toISOString();
     historyChart.options.scales.x.max = maxDate.toISOString();
+    
+    // CORRECTION : On NE force PLUS la propriété .time.unit ici. 
+    // On laisse Chart.js recalculer l'unité idéale automatiquement à chaque rafraîchissement.
+    
     historyChart.update();
 }
 
@@ -271,9 +276,15 @@ historyModal.addEventListener('show.bs.modal', function (event) {
                         x: {
                             type: 'time',
                             time: {
-                                unit: 'hour',
-                                displayFormats: { hour: 'HH:mm', day: 'dd/MM' },
-                                tooltipFormat: 'dd/MM HH:mm'
+                                // Configuration ultra-dynamique des formats selon le niveau de zoom actuel
+                                displayFormats: { 
+                                    minute: 'HH:mm',       // Zoom très proche (quelques heures) -> ex: 14:30
+                                    hour: 'dd/MM HH:mm',   // Période moyenne (24h à 72h) -> ex: 25/06 14:00 (Date + Heure !)
+                                    day: 'dd/MM',          // Échelle d'un mois -> ex: 25/06
+                                    week: 'dd/MM',         // Échelle intermédiaire -> ex: 25/06
+                                    month: 'MM/yyyy'       // Échelle d'une année -> ex: 06/2026
+                                },
+                                tooltipFormat: 'dd/MM/yyyy HH:mm' // L'info-bulle reste toujours précise au survol
                             },
                             title: { display: true, text: 'Temps' },
                             grid: { color: 'rgba(0, 0, 0, 0.05)' }
