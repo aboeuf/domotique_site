@@ -41,12 +41,11 @@ def domotique_history(sensor_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Requête pour récupérer l'historique des dernières 24 heures
+    # Requête pour récupérer l'historique
     query = """
         SELECT timestamp, temperature, humidity 
         FROM thermometer_data 
-        WHERE sensor_id = %s 
-        AND timestamp >= NOW() - INTERVAL 24 HOUR
+        WHERE sensor_id = %s
         ORDER BY timestamp ASC
     """
     cursor.execute(query, (sensor_id,))
