@@ -1,21 +1,45 @@
 {% extends "base.html" %}
 {% block title %}Domotique - Températures{% endblock %}
 {% block content %}
+    <style>
+        .is-sorting .sort-controls { display: inline-block !important; }
+        .is-sorting .card-lqi { display: none !important; }
+        .is-sorting .card { border: 2px dashed #6c757d !important; opacity: 0.85; }
+    </style>
     <div class="container mt-4">
-        <h1 class="mb-4"><i class="bi bi-thermometer-half me-2"></i>Tableau de bord Domotique</h1>
-        <div class="row row-cols-1 row-cols-md-3 g-4">
+        <h1 class="mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span><i class="bi bi-thermometer-half me-2"></i>Tableau de bord Domotique</span>
+            <button id="toggleSortBtn" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrows-move me-1"></i>Organiser les pièces
+            </button>
+        </h1>
+        <div id="roomsGrid" class="row row-cols-1 row-cols-md-3 g-4">
             {% for mesure in mesures %}
-                <div class="col">
+                <div class="col" data-sort-id="{{ mesure.sensor_id }}">
                     <div class="card h-100 shadow-sm hvr-pointer"
                          data-bs-toggle="modal"
                          data-bs-target="#historyModal"
                          data-sensor-id="{{ mesure.sensor_id }}"
                          data-sensor-name="{{ mesure.piece }}">
                         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                            <h5 class="card-title mb-0">
+                            <h5 class="card-title mb-0 text-truncate" style="max-width: 65%;">
                                 <i class="bi bi-house-door me-2"></i>{{ mesure.piece }}
                             </h5>
-                            <small class="text-muted" style="color: #adb5bd !important;">LQI: {{ mesure.linkquality }}</small>
+                            <div class="sort-controls d-none">
+                                <button type="button"
+                                        class="btn btn-sm btn-secondary py-0 px-1 move-btn me-1"
+                                        data-dir="up"
+                                        title="Déplacer vers la gauche / le haut">
+                                    <i class="bi bi-chevron-left"></i>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm btn-secondary py-0 px-1 move-btn"
+                                        data-dir="down"
+                                        title="Déplacer vers la droite / le bas">
+                                    <i class="bi bi-chevron-right"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted card-lqi" style="color: #adb5bd !important;">LQI: {{ mesure.linkquality }}</small>
                         </div>
                         <div class="card-body text-center py-4">
                             <div class="display-4 fw-bold text-dark mb-2">{{ "%.1f"|format(mesure.temperature) }}°C</div>
@@ -163,6 +187,124 @@ const timePreset = document.getElementById('timePreset');
 const customSelectContainer = document.getElementById('customSelectContainer');
 const customValueSelect = document.getElementById('customValueSelect');
 
+// Elements DOM principaux déplacés en haut pour accessibilité globale
+const gridContainer = document.getElementById('roomsGrid');
+const toggleSortBtn = document.getElementById('toggleSortBtn');
+const modalPieceSelect = document.getElementById('modalPieceSelect');
+
+// ==========================================
+// RESTAURATION DE L'ORDRE PERSISTANT (DASHBOARD & DROP-DOWN)
+// ==========================================
+const savedOrder = localStorage.getItem('domotique_room_order');
+if (savedOrder) {
+    const orderArray = JSON.parse(savedOrder);
+    
+    // 1. Ré-ordonner les cartes du Tableau de bord
+    if (gridContainer) {
+        const itemsMap = {};
+        gridContainer.querySelectorAll('[data-sort-id]').forEach(el => {
+            itemsMap[el.getAttribute('data-sort-id')] = el;
+        });
+        orderArray.forEach(id => {
+            if (itemsMap[id]) {
+                gridContainer.appendChild(itemsMap[id]);
+                delete itemsMap[id];
+            }
+        });
+        Object.values(itemsMap).forEach(el => {
+            gridContainer.appendChild(el);
+        });
+    }
+
+    // 2. Ré-ordonner simultanément les options du menu déroulant de la modal
+    if (modalPieceSelect) {
+        const optionsMap = {};
+        modalPieceSelect.querySelectorAll('option').forEach(opt => {
+            optionsMap[opt.value] = opt;
+        });
+        orderArray.forEach(id => {
+            if (optionsMap[id]) {
+                modalPieceSelect.appendChild(optionsMap[id]);
+                delete optionsMap[id];
+            }
+        });
+        Object.values(optionsMap).forEach(opt => {
+            modalPieceSelect.appendChild(opt);
+        });
+    }
+}
+
+// ==========================================
+// ACTION ET ÉCOUTEURS DU MODE RÉORGANISATION
+// ==========================================
+if (toggleSortBtn && gridContainer) {
+    toggleSortBtn.addEventListener('click', function() {
+        gridContainer.classList.toggle('is-sorting');
+        if (gridContainer.classList.contains('is-sorting')) {
+            this.innerHTML = '<i class="bi bi-check-lg me-1"></i>Enregistrer l\'ordre';
+            this.classList.replace('btn-outline-secondary', 'btn-success');
+        } else {
+            this.innerHTML = '<i class="bi bi-arrows-move me-1"></i>Organiser les pièces';
+            this.classList.replace('btn-success', 'btn-outline-secondary');
+            saveCurrentOrder();
+        }
+    });
+
+    gridContainer.addEventListener('click', function(e) {
+        const btn = e.target.closest('.move-btn');
+        if (!btn) return;
+        
+        // Stoppe la propagation pour éviter que la carte ne déclenche la modal d'historique
+        e.stopPropagation();
+        
+        const colItem = btn.closest('[data-sort-id]');
+        const direction = btn.getAttribute('data-dir');
+        
+        if (direction === 'up') {
+            const prev = colItem.previousElementSibling;
+            if (prev && prev.hasAttribute('data-sort-id')) {
+                gridContainer.insertBefore(colItem, prev);
+            }
+        } else if (direction === 'down') {
+            const next = colItem.nextElementSibling;
+            if (next && next.hasAttribute('data-sort-id')) {
+                gridContainer.insertBefore(colItem, next.nextElementSibling);
+            }
+        }
+        
+        saveCurrentOrder(); // Met à jour le localStorage et le menu déroulant en temps réel
+    });
+}
+
+// Extrait l'ordre, sauvegarde et ré-aligne instantanément le menu de la modal
+function saveCurrentOrder() {
+    const currentOrder = [];
+    gridContainer.querySelectorAll('[data-sort-id]').forEach(el => {
+        currentOrder.push(el.getAttribute('data-sort-id'));
+    });
+    localStorage.setItem('domotique_room_order', JSON.stringify(currentOrder));
+
+    // Synchronisation en direct du menu déroulant <select> pendant qu'on trie
+    if (modalPieceSelect) {
+        const optionsMap = {};
+        modalPieceSelect.querySelectorAll('option').forEach(opt => {
+            optionsMap[opt.value] = opt;
+        });
+        currentOrder.forEach(id => {
+            if (optionsMap[id]) {
+                modalPieceSelect.appendChild(optionsMap[id]);
+                delete optionsMap[id];
+            }
+        });
+        Object.values(optionsMap).forEach(opt => {
+            modalPieceSelect.appendChild(opt);
+        });
+    }
+}
+
+// ==========================================
+// LOGIQUE GRAPHIQUE (CHART.JS) EXISTANTE
+// ==========================================
 function updateChartBounds() {
     if (!historyChart || !earliestDate) return;
 
@@ -258,9 +400,6 @@ timePreset.addEventListener('change', function() {
 
 customValueSelect.addEventListener('change', updateChartBounds);
 
-const modalPieceSelect = document.getElementById('modalPieceSelect');
-
-// Fonction réutilisable pour charger les données d'un capteur spécifique
 function loadHistory(sensorId) {
     fetch(`/domotique/api/history/${sensorId}`)
         .then(response => response.json())
@@ -322,7 +461,7 @@ function loadHistory(sensorId) {
                     },
                     plugins: {
                         tooltip: {
-                            enabled: false, // Ton option 3 : bandeau externe
+                            enabled: false,
                             external: function(context) {
                                 const banner = document.getElementById('mobileTooltipBanner');
                                 const tooltipModel = context.tooltip;
@@ -418,15 +557,18 @@ function loadHistory(sensorId) {
 
 // 1. Événement déclenché lors du clic sur une carte (ouverture de la modal)
 historyModal.addEventListener('show.bs.modal', function (event) {
+    // Sécurité : bloque l'ouverture de l'historique si on est en train de réorganiser
+    if (gridContainer && gridContainer.classList.contains('is-sorting')) {
+        event.preventDefault();
+        return;
+    }
+
     const card = event.relatedTarget;
     if (!card) return;
 
     const sensorId = card.getAttribute('data-sensor-id');
-    
-    // Positionne le menu déroulant sur la bonne pièce
     modalPieceSelect.value = sensorId;
     
-    // Réinitialise la période par défaut à chaque ouverture de carte
     timePreset.value = '24h';
     customSelectContainer.classList.add('d-none');
     
@@ -435,9 +577,7 @@ historyModal.addEventListener('show.bs.modal', function (event) {
 
 // 2. Événement déclenché lorsque l'on change de pièce DEPUIS le menu déroulant de la modal
 modalPieceSelect.addEventListener('change', function() {
-    // On charge le graphique de la nouvelle pièce en conservant la période sélectionnée (24h, 1m, etc.)
     loadHistory(this.value);
 });
-
     </script>
 {% endblock %}
