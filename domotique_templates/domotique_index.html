@@ -10,7 +10,13 @@
 <div class="row row-cols-1 row-cols-md-3 g-4">
     {% for mesure in mesures %}
     <div class="col">
-        <div class="card h-100 shadow-sm">
+        <div class="card h-100 shadow-sm sensor-card" 
+             style="cursor: pointer;" 
+             data-sensor-id="{{ mesure.sensor_id }}" 
+             data-sensor-name="{{ mesure.piece }}"
+             data-bs-toggle="modal" 
+             data-bs-target="#historyModal">
+            
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">
                     <i class="bi bi-house-door me-2"></i>{{ mesure.piece }}
@@ -32,7 +38,7 @@
                     <i class="bi bi-clock me-1"></i>{{ mesure.timestamp.strftime('%H:%M') }}
                 </small>
                 <small class="text-muted">
-                    <i class="bi bi-battery-full {% if mesure.battery < 20 %}text-danger fw-bold{% else %}text-success{% endif %} me-1"></i>{{ mesure.battery }}%
+                    <i class="bi bi-battery-full {% if mesure.battery < 20 %}text-danger fw-bold{% else %}text-success{% endif %} me-1\"></i>{{ mesure.battery }}%
                 </small>
             </div>
         </div>
@@ -40,9 +46,137 @@
     {% else %}
     <div class="col-12">
         <div class="alert alert-warning" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i>Aucune donnée n'a encore été enregistrée dans la base de données.
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>Aucune donnée n'a encore été enregistrée dans la base...
         </div>
     </div>
     {% endfor %}
 </div>
+
+<div class="modal fade" id="historyModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="historyModalLabel">
+                    <i class="bi bi-graph-up me-2"></i>Historique : <span id="modalPieName"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div style="position: relative; width: 100%; height: 400px;">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+<script>
+let historyChart = null;
+const historyModal = document.getElementById('historyModal');
+
+historyModal.addEventListener('show.bs.modal', function (event) {
+    const card = event.relatedTarget;
+    const sensorId = card.getAttribute('data-sensor-id');
+    const sensorName = card.getAttribute('data-sensor-name');
+    
+    document.getElementById('modalPieName').textContent = sensorName;
+    
+    fetch(`/domotique/api/history/${sensorId}`)
+        .then(response => response.json())
+        .then(data => {
+            // Transformation des données au format { x: 'date', y: valeur }
+            const tempPoints = data.map(row => ({
+                x: row.timestamp, // L'adaptateur de date gère l'ISO string nativement
+                y: row.temperature
+            }));
+            
+            const humPoints = data.map(row => ({
+                x: row.timestamp,
+                y: row.humidity
+            }));
+            
+            const ctx = document.getElementById('historyChart').getContext('2d');
+            
+            if (historyChart) {
+                historyChart.destroy();
+            }
+            
+            historyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    // Plus de labels globaux ici, les coordonnées x de chaque point suffisent
+                    datasets: [
+                        {
+                            label: 'Température (°C)',
+                            data: tempPoints,
+                            borderColor: 'rgba(220, 53, 69, 1)',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderWidth: 2,
+                            yAxisID: 'y-temp',
+                            tension: 0.3,
+                            pointRadius: 1
+                        },
+                        {
+                            label: 'Humidité (%)',
+                            data: humPoints,
+                            borderColor: 'rgba(13, 110, 253, 1)',
+                            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                            borderWidth: 2,
+                            yAxisID: 'y-hum',
+                            tension: 0.3,
+                            pointRadius: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        // Configuration de l'axe X en mode Temporel
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour', // Graduation principale par heure
+                                displayFormats: {
+                                    hour: 'HH:mm' // Format d'affichage sur l'axe (ex: 14:00)
+                                },
+                                tooltipFormat: 'dd/MM HH:mm' // Format dans la bulle au survol
+                            },
+                            title: {
+                                display: true,
+                                text: 'Temps'
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        'y-temp': {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: 'Température (°C)' },
+                            suggestedMin: 15,
+                            suggestedMax: 30
+                        },
+                        'y-hum': {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: 'Humidité (%)' },
+                            suggestedMin: 30,
+                            suggestedMax: 90,
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Erreur lors de la récupération de l\'historique:', error);
+        });
+});
+</script>
 {% endblock %}
