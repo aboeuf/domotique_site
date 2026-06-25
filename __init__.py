@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template, jsonify
+import json
+from flask import Blueprint, render_template, jsonify, Response
 from app import get_db_connection
 from utils import site_permission_required
 
@@ -61,3 +62,41 @@ def domotique_history(sensor_id):
             row["timestamp"] = row["timestamp"].isoformat()
 
     return jsonify(history)
+
+
+@domotique_bp.route("/export/json")
+@site_permission_required("domotique")
+def domotique_export_json():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Requête pour récupérer TOUT l'historique avec le nom de la pièce associés
+    query = """
+        SELECT t.timestamp, t.sensor_id, s.friendly_name AS piece, 
+               t.temperature, t.humidity, t.battery, t.linkquality
+        FROM thermometer_data t
+        INNER JOIN sensors s ON t.sensor_id = s.ieee_address
+        ORDER BY t.timestamp DESC
+    """
+    cursor.execute(query)
+    history = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    # Conversion des objets datetime en chaînes ISO pour le JSON
+    for row in history:
+        if row["timestamp"]:
+            row["timestamp"] = row["timestamp"].isoformat()
+
+    # Sérialisation en chaîne JSON propre (avec indentation pour la lisibilité)
+    json_data = json.dumps(history, indent=4, ensure_ascii=False)
+
+    # On renvoie une réponse configurée pour déclencher un téléchargement de fichier
+    return Response(
+        json_data,
+        mimetype="application/json",
+        headers={
+            "Content-Disposition": "attachment;filename=historique_domotique.json"
+        },
+    )
