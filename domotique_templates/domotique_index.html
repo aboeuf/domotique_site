@@ -1,110 +1,142 @@
 {% extends "base.html" %}
 {% block title %}Domotique - Températures{% endblock %}
-
 {% block content %}
-<div class="container mt-4">
-    <h1 class="mb-4"><i class="bi bi-thermometer-half me-2"></i>Tableau de bord Domotique</h1>
-
-    <div class="row row-cols-1 row-cols-md-3 g-4">
-        {% for mesure in mesures %}
-        <div class="col">
-            <div class="card h-100 shadow-sm hvr-pointer" 
-                 data-bs-toggle="modal" 
-                 data-bs-target="#historyModal" 
-                 data-sensor-id="{{ mesure.sensor_id }}" 
-                 data-sensor-name="{{ mesure.piece }}">
-                 
-                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0">
-                        <i class="bi bi-house-door me-2"></i>{{ mesure.piece }}
+    <div class="container mt-4">
+        <h1 class="mb-4"><i class="bi bi-thermometer-half me-2"></i>Tableau de bord Domotique</h1>
+        <div class="row row-cols-1 row-cols-md-3 g-4">
+            {% for mesure in mesures %}
+                <div class="col">
+                    <div class="card h-100 shadow-sm hvr-pointer"
+                         data-bs-toggle="modal"
+                         data-bs-target="#historyModal"
+                         data-sensor-id="{{ mesure.sensor_id }}"
+                         data-sensor-name="{{ mesure.piece }}">
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-house-door me-2"></i>{{ mesure.piece }}
+                            </h5>
+                            <small class="text-muted" style="color: #adb5bd !important;">LQI: {{ mesure.linkquality }}</small>
+                        </div>
+                        <div class="card-body text-center py-4">
+                            <div class="display-4 fw-bold text-dark mb-2">{{ "%.1f"|format(mesure.temperature) }}°C</div>
+                            <div class="fs-5 text-muted mb-3">
+                                <i class="bi bi-droplet-fill text-primary me-1"></i>Humidité : {{ mesure.humidity }}%
+                            </div>
+                        </div>
+                        <div class="card-footer bg-light d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                <i class="bi bi-clock me-1"></i>
+                                {% if mesure.timestamp is string %}
+                                    {{ mesure.timestamp }}
+                                {% else %}
+                                    {{ mesure.timestamp.strftime("%H:%M") }}
+                                {% endif %}
+                            </small>
+                            <small class="text-muted">
+                                <i class="bi bi-battery-full {% if mesure.battery < 20 %}text-danger fw-bold{% else %}text-success{% endif %} me-1"></i>{{ mesure.battery }}%
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="col-12">
+                    <div class="alert alert-warning" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>Aucune donnée n'a encore été enregistrée dans la base...
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="modal fade"
+         id="historyModal"
+         tabindex="-1"
+         aria-labelledby="historyModalLabel"
+         aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title" id="historyModalLabel">
+                        <i class="bi bi-graph-up me-2"></i>Historique : <span id="modalPieName"></span>
                     </h5>
-                    <small class="text-muted" style="color: #adb5bd !important;">
-                        LQI: {{ mesure.linkquality }}
-                    </small>
+                    <button type="button"
+                            class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"
+                            aria-label="Close"></button>
                 </div>
-                
-                <div class="card-body text-center py-4">
-                    <div class="display-4 fw-bold text-dark mb-2">
-                        {{ "%.1f"|format(mesure.temperature) }}°C
+                <div class="modal-body">
+                    <div class="row g-2 mb-3 align-items-center bg-light p-2 rounded border">
+                        <div class="col-auto">
+                            <label for="timePreset" class="small fw-bold text-muted">Période :</label>
+                        </div>
+                        <div class="col-auto">
+                            <select id="timePreset" class="form-select form-select-sm">
+                                <option value="24h">Dernières 24 heures</option>
+                                <option value="1m">Dernier mois</option>
+                                <option value="1y">Dernière année</option>
+                                <option value="all">Tout</option>
+                                <option value="custom_month">Un mois particulier...</option>
+                                <option value="custom_year">Une année particulière...</option>
+                            </select>
+                        </div>
+                        <div class="col-auto d-none" id="customSelectContainer">
+                            <select id="customValueSelect" class="form-select form-select-sm"></select>
+                        </div>
                     </div>
-                    <div class="fs-5 text-muted mb-3">
-                        <i class="bi bi-droplet-fill text-primary me-1"></i>Humidité : {{ mesure.humidity }}%
+                    <div style="position: relative; width: 100%; height: 400px;">
+                        <canvas id="historyChart"></canvas>
                     </div>
-                </div>
-                
-                <div class="card-footer bg-light d-flex justify-content-between align-items-center">
-                    <small class="text-muted">
-                        <i class="bi bi-clock me-1"></i>
-                        {% if mesure.timestamp is string %}
-                            {{ mesure.timestamp }}
-                        {% else %}
-                            {{ mesure.timestamp.strftime('%H:%M') }}
-                        {% endif %}
-                    </small>
-                    <small class="text-muted">
-                        <i class="bi bi-battery-full {% if mesure.battery < 20 %}text-danger fw-bold{% else %}text-success{% endif %} me-1"></i>{{ mesure.battery }}%
-                    </small>
-                </div>
-            </div>
-        </div>
-        {% else %}
-        <div class="col-12">
-            <div class="alert alert-warning" role="alert">
-                <i class="bi bi-exclamation-triangle-fill me-2"></i>Aucune donnée n'a encore été enregistrée dans la base...
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-
-<div class="modal fade" id="historyModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title" id="historyModalLabel">
-                    <i class="bi bi-graph-up me-2"></i>Historique : <span id="modalPieName"></span>
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                
-                <div class="row g-2 mb-3 align-items-center bg-light p-2 rounded border">
-                    <div class="col-auto">
-                        <label for="timePreset" class="small fw-bold text-muted">Période :</label>
-                    </div>
-                    <div class="col-auto">
-                        <select id="timePreset" class="form-select form-select-sm">
-                            <option value="24h">Dernières 24 heures</option>
-                            <option value="1m">Dernier mois</option>
-                            <option value="1y">Dernière année</option>
-                            <option value="all">Tout</option>
-                            <option value="custom_month">Un mois particulier...</option>
-                            <option value="custom_year">Une année particulière...</option>
-                        </select>
-                    </div>
-                    <div class="col-auto d-none" id="customSelectContainer">
-                        <select id="customValueSelect" class="form-select form-select-sm"></select>
-                    </div>
-                </div>
-
-                <div style="position: relative; width: 100%; height: 400px;">
-                    <canvas id="historyChart"></canvas>
-                </div>
-                <div class="text-center text-muted small mt-2">
-                    <i class="bi bi-info-circle me-1"></i> Utilisez la molette pour <strong>zoomer</strong> et glissez pour vous <strong>déplacer</strong> horizontalement.
                 </div>
             </div>
         </div>
     </div>
-</div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script>
+const ONE_SECOND = 1000;
+const ONE_MINUTE = 60 * ONE_SECOND;
+const ONE_HOUR = 60 * ONE_MINUTE;
+const ONE_DAY = 24 * ONE_HOUR;
+const ONE_MONTH = 30 * ONE_DAY;
+const ONE_YEAR = 365 * ONE_DAY;
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+const FORMAT_MMSS = new Intl.DateTimeFormat('fr-FR', { minute: '2-digit', second: '2-digit' });
+const FORMAT_HHMM = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const FORMAT_DDMM = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit' });
+const FORMAT_MMYY = new Intl.DateTimeFormat('fr-FR', { month: '2-digit', year: '2-digit' });
+const FORMAT_YYYY = new Intl.DateTimeFormat('fr-FR', { year: 'numeric' });
 
-<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+const STEPS = [
+    [ONE_SECOND, FORMAT_MMSS],
+    [ONE_MINUTE, FORMAT_MMSS],
+    [5 * ONE_MINUTE, FORMAT_HHMM],
+    [10 * ONE_MINUTE, FORMAT_HHMM],
+    [15 * ONE_MINUTE, FORMAT_HHMM],
+    [30 * ONE_MINUTE, FORMAT_HHMM],
+    [ONE_HOUR, FORMAT_HHMM],
+    [2 * ONE_HOUR, FORMAT_HHMM],
+    [3 * ONE_HOUR, FORMAT_HHMM],
+    [6 * ONE_HOUR, FORMAT_HHMM],
+    [12 * ONE_HOUR, FORMAT_HHMM],
+    [ONE_DAY, FORMAT_DDMM],
+    [2 * ONE_DAY, FORMAT_DDMM],
+    [3 * ONE_DAY, FORMAT_DDMM],
+    [10 * ONE_DAY, FORMAT_DDMM],
+    [ONE_MONTH, FORMAT_MMYY],
+    [2 * ONE_MONTH, FORMAT_MMYY],
+    [3 * ONE_MONTH, FORMAT_MMYY],
+    [4 * ONE_MONTH, FORMAT_MMYY],
+    [5 * ONE_MONTH, FORMAT_MMYY],
+    [6 * ONE_MONTH, FORMAT_MMYY],
+    [ONE_YEAR, FORMAT_YYYY],
+    [2 * ONE_YEAR, FORMAT_YYYY],
+    [5 * ONE_YEAR, FORMAT_YYYY],
+    [10 * ONE_YEAR, FORMAT_YYYY]
+]
 
-<script>
+const NB_TICKS_MAX = 10;
+
 let historyChart = null;
 let earliestDate = null; 
 const historyModal = document.getElementById('historyModal');
@@ -275,15 +307,54 @@ historyModal.addEventListener('show.bs.modal', function (event) {
                         x: {
                             type: 'time',
                             time: {
-                                // Configuration ultra-dynamique des formats selon le niveau de zoom actuel
-                                displayFormats: { 
-                                    minute: 'HH:mm',       // Zoom très proche (quelques heures) -> ex: 14:30
-                                    hour: 'dd/MM HH:mm',   // Période moyenne (24h à 72h) -> ex: 25/06 14:00 (Date + Heure !)
-                                    day: 'dd/MM',          // Échelle d'un mois -> ex: 25/06
-                                    week: 'dd/MM',         // Échelle intermédiaire -> ex: 25/06
-                                    month: 'MM/yyyy'       // Échelle d'une année -> ex: 06/2026
-                                },
-                                tooltipFormat: 'dd/MM/yyyy HH:mm' // L'info-bulle reste toujours précise au survol
+                                tooltipFormat: 'dd/MM/yyyy HH:mm:ss'
+                            },
+                            afterBuildTicks: function(axis) {
+                                const min = new Date(axis.min).getTime();
+                                const max = new Date(axis.max).getTime();
+
+                                if (isNaN(min) || isNaN(max)) return;
+
+                                const delta = max - min;
+                            
+                                let step = null;
+                                for (let i = 0; i < STEPS.length; i++) {
+                                    const nb_ticks = delta / STEPS[i][0]
+                                    if (nb_ticks <= NB_TICKS_MAX) {
+                                        step = STEPS[i][0];
+                                        break;
+                                    }
+                                }
+
+                                if (!step) return
+
+                                let start_date = new Date(min)
+                                start_date.setHours(0, 0, 0, 0)            
+
+                                let customTicks = [];
+                                for (let time = start_date.getTime(); time <= max; time += step) {
+                                    if (time >= min) {
+                                        customTicks.push({ value: time });
+                                    }
+                                }
+
+                                axis.ticks = customTicks;
+                            },
+                            ticks: {
+                                callback: function(value, index, ticks) {
+                                    if (!ticks || ticks.length < 2) return '';
+
+                                    const date = new Date(value);
+                                    const step = ticks[1].value - ticks[0].value;
+
+                                    for (let i = 0; i < STEPS.length; i++) {
+                                        if (step <= STEPS[i][0]) {
+                                            return STEPS[i][1].format(date);
+                                        }
+                                    }
+
+                                    return STEPS[STEPS.length - 1][1].format(date);
+                                }
                             },
                             title: { display: true, text: 'Temps' },
                             grid: { color: 'rgba(0, 0, 0, 0.05)' }
@@ -326,5 +397,5 @@ historyModal.addEventListener('show.bs.modal', function (event) {
             console.error('Erreur lors de la récupération de l\'historique:', error);
         });
 });
-</script>
+    </script>
 {% endblock %}
