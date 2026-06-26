@@ -47,7 +47,8 @@
                             <small class="text-muted card-lqi" style="color: #adb5bd !important;">LQI: {{ mesure.linkquality }}</small>
                         </div>
                         <div class="card-body text-center py-4">
-                            <div class="display-4 fw-bold text-dark mb-2">{{ "%.1f"|format(mesure.temperature) }}°C</div>
+                            <div class="display-4 fw-bold mb-2 dashboard-temp"
+                                 data-temp="{{ mesure.temperature }}">{{ "%.1f"|format(mesure.temperature) }}°C</div>
                             <div class="fs-5 text-muted mb-3">
                                 <i class="bi bi-droplet-fill text-primary me-1"></i>Humidité : {{ mesure.humidity }}%
                             </div>
@@ -197,19 +198,17 @@ const timePreset = document.getElementById('timePreset');
 const customSelectContainer = document.getElementById('customSelectContainer');
 const customValueSelect = document.getElementById('customValueSelect');
 
-// Elements DOM principaux déplacés en haut pour accessibilité globale
 const gridContainer = document.getElementById('roomsGrid');
 const toggleSortBtn = document.getElementById('toggleSortBtn');
 const modalPieceSelect = document.getElementById('modalPieceSelect');
 
 // ==========================================
-// RESTAURATION DE L'ORDRE PERSISTANT (DASHBOARD & DROP-DOWN)
+// RESTAURATION DE L'ORDRE PERSISTANT
 // ==========================================
 const savedOrder = localStorage.getItem('domotique_room_order');
 if (savedOrder) {
     const orderArray = JSON.parse(savedOrder);
     
-    // 1. Ré-ordonner les cartes du Tableau de bord
     if (gridContainer) {
         const itemsMap = {};
         gridContainer.querySelectorAll('[data-sort-id]').forEach(el => {
@@ -226,7 +225,6 @@ if (savedOrder) {
         });
     }
 
-    // 2. Ré-ordonner simultanément les options du menu déroulant de la modal
     if (modalPieceSelect) {
         const optionsMap = {};
         modalPieceSelect.querySelectorAll('option').forEach(opt => {
@@ -264,7 +262,6 @@ if (toggleSortBtn && gridContainer) {
         const btn = e.target.closest('.move-btn');
         if (!btn) return;
         
-        // Stoppe la propagation pour éviter que la carte ne déclenche la modal d'historique
         e.stopPropagation();
         
         const colItem = btn.closest('[data-sort-id]');
@@ -282,11 +279,10 @@ if (toggleSortBtn && gridContainer) {
             }
         }
         
-        saveCurrentOrder(); // Met à jour le localStorage et le menu déroulant en temps réel
+        saveCurrentOrder();
     });
 }
 
-// Extrait l'ordre, sauvegarde et ré-aligne instantanément le menu de la modal
 function saveCurrentOrder() {
     const currentOrder = [];
     gridContainer.querySelectorAll('[data-sort-id]').forEach(el => {
@@ -294,7 +290,6 @@ function saveCurrentOrder() {
     });
     localStorage.setItem('domotique_room_order', JSON.stringify(currentOrder));
 
-    // Synchronisation en direct du menu déroulant <select> pendant qu'on trie
     if (modalPieceSelect) {
         const optionsMap = {};
         modalPieceSelect.querySelectorAll('option').forEach(opt => {
@@ -313,7 +308,7 @@ function saveCurrentOrder() {
 }
 
 // ==========================================
-// LOGIQUE GRAPHIQUE (CHART.JS) EXISTANTE
+// LOGIQUE GRAPHIQUE (CHART.JS)
 // ==========================================
 function updateChartBounds() {
     if (!historyChart || !earliestDate) return;
@@ -565,9 +560,7 @@ function loadHistory(sensorId) {
         });
 }
 
-// 1. Événement déclenché lors du clic sur une carte (ouverture de la modal)
 historyModal.addEventListener('show.bs.modal', function (event) {
-    // Sécurité : bloque l'ouverture de l'historique si on est en train de réorganiser
     if (gridContainer && gridContainer.classList.contains('is-sorting')) {
         event.preventDefault();
         return;
@@ -585,7 +578,6 @@ historyModal.addEventListener('show.bs.modal', function (event) {
     loadHistory(sensorId);
 });
 
-// 2. Événement déclenché lorsque l'on change de pièce DEPUIS le menu déroulant de la modal
 modalPieceSelect.addEventListener('change', function() {
     loadHistory(this.value);
 });
@@ -594,7 +586,6 @@ modalPieceSelect.addEventListener('change', function() {
 // FONCTION UTILITAIRE DE SAUVEGARDE (AVEC PROMPT)
 // ==========================================
 async function saveFileWithPrompt(content, defaultFileName, mimeType, extensionDescription, extension) {
-    // Si l'API moderne showSaveFilePicker est disponible dans le navigateur
     if ('showSaveFilePicker' in window) {
         try {
             const acceptTypes = {};
@@ -612,13 +603,11 @@ async function saveFileWithPrompt(content, defaultFileName, mimeType, extensionD
             await writable.write(content);
             await writable.close();
         } catch (err) {
-            // L'utilisateur a simplement cliqué sur "Annuler", on ne fait rien
             if (err.name !== 'AbortError') {
                 console.error("Erreur lors de la sauvegarde :", err);
             }
         }
     } else {
-        // Fallback pour les navigateurs non compatibles : téléchargement classique standard
         const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -671,7 +660,6 @@ document.getElementById('exportCsvBtn').addEventListener('click', function() {
     const activePreset = timePreset.value;
     const fileName = `historique_${cleanRoomName}_${activePreset}.csv`;
 
-    // Appel de la fonction avec demande de chemin
     saveFileWithPrompt(csvContent, fileName, 'text/csv', 'Fichier CSV', '.csv');
 });
 
@@ -680,18 +668,81 @@ document.getElementById('exportCsvBtn').addEventListener('click', function() {
 // ==========================================
 document.getElementById('exportJsonBtn').addEventListener('click', async function() {
     try {
-        // Récupération asynchrone des données depuis la route Flask existante
         const response = await fetch("{{ url_for('domotique.domotique_export_json') }}");
         if (!response.ok) throw new Error("Impossible de récupérer les données du serveur.");
         
         const jsonData = await response.text();
         const fileName = 'historique_domotique.json';
 
-        // Appel de la fonction avec demande de chemin
         await saveFileWithPrompt(jsonData, fileName, 'application/json', 'Fichier JSON', '.json');
     } catch (err) {
         alert("Erreur lors de l'export JSON : " + err.message);
     }
+});
+
+// ==========================================
+// GRADIENT MULTI-STOPS SANS VERT (STANDARD UI)
+// ==========================================
+document.addEventListener('DOMContentLoaded', function() {
+    const tempElements = document.querySelectorAll('.dashboard-temp');
+    let temps = [];
+
+    tempElements.forEach(el => {
+        const val = parseFloat(el.getAttribute('data-temp'));
+        if (!isNaN(val)) temps.push(val);
+    });
+
+    if (temps.length === 0) return;
+
+    const t_min = Math.min(...temps);
+    const t_max = Math.max(...temps);
+    const t_range = t_max - t_min;
+
+    // Définition de la colormap personnalisée (Multi-stops)
+    const colors = [
+     { pct: 0.0, r: 41,  g: 128, b: 185 },
+     { pct: 0.3, r: 142, g: 68,  b: 173 },
+     { pct: 0.7, r: 211, g: 104, b: 31 },
+     { pct: 1.0, r: 192, g: 41,  b: 43 }
+    ];
+
+    // Fonction d'interpolation à travers les points d'ancrage
+    function getColorForPercentage(pct) {
+        // Sécurité pour les bornes
+        if (pct <= 0) return `rgb(${colors[0].r}, ${colors[0].g}, ${colors[0].b})`;
+        if (pct >= 1) return `rgb(${colors[colors.length - 1].r}, ${colors[colors.length - 1].g}, ${colors[colors.length - 1].b})`;
+
+        // Recherche du segment correspondant
+        for (let i = 1; i < colors.length; i++) {
+            if (pct <= colors[i].pct) {
+                const cLower = colors[i - 1];
+                const cUpper = colors[i];
+                
+                // Normalisation du pourcentage à l'intérieur du segment courant
+                const segmentRange = cUpper.pct - cLower.pct;
+                const normalizedPct = (pct - cLower.pct) / segmentRange;
+
+                // Interpolation linéaire RGB
+                const r = Math.round(cLower.r + normalizedPct * (cUpper.r - cLower.r));
+                const g = Math.round(cLower.g + normalizedPct * (cUpper.g - cLower.g));
+                const b = Math.round(cLower.b + normalizedPct * (cUpper.b - cLower.b));
+
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+        }
+        return `rgb(${colors[colors.length - 1].r}, ${colors[colors.length - 1].g}, ${colors[colors.length - 1].b})`;
+    }
+
+    // Application du style sur chaque carte
+    tempElements.forEach(el => {
+        const t = parseFloat(el.getAttribute('data-temp'));
+        if (isNaN(t)) return;
+
+        const c = t_range === 0 ? 0.5 : (t - t_min) / t_range;
+        
+        el.style.color = getColorForPercentage(c);
+        el.style.fontWeight = '600'; // Améliore la perception de la couleur textuelle
+    });
 });
     </script>
 {% endblock %}
