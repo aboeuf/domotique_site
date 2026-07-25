@@ -42,7 +42,7 @@ def domotique_history(sensor_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Requête pour récupérer l'historique
+    # Query to retrieve history
     query = """
         SELECT timestamp, temperature, humidity 
         FROM thermometer_data 
@@ -55,8 +55,8 @@ def domotique_history(sensor_id):
     cursor.close()
     conn.close()
 
-    # Le type datetime de MySQL n'est pas sérialisable en JSON par défaut,
-    # on convertit les timestamps en chaînes de caractères de type ISO.
+    # MySQL datetime type is not serializable to JSON by default,
+    # we convert timestamps to ISO format strings.
     for row in history:
         if row["timestamp"]:
             row["timestamp"] = row["timestamp"].isoformat()
@@ -70,7 +70,7 @@ def domotique_export_json():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Requête pour récupérer TOUT l'historique avec le nom de la pièce associés
+    # Query to retrieve ALL history with associated room names
     query = """
         SELECT t.timestamp, t.sensor_id, s.friendly_name AS piece, 
                t.temperature, t.humidity, t.battery, t.linkquality
@@ -84,15 +84,15 @@ def domotique_export_json():
     cursor.close()
     conn.close()
 
-    # Conversion des objets datetime en chaînes ISO pour le JSON
+    # Convert datetime objects to ISO strings for JSON
     for row in history:
         if row["timestamp"]:
             row["timestamp"] = row["timestamp"].isoformat()
 
-    # Sérialisation en chaîne JSON propre (avec indentation pour la lisibilité)
+    # Serialize to clean JSON string (with indentation for readability)
     json_data = json.dumps(history, indent=4, ensure_ascii=False)
 
-    # On renvoie une réponse configurée pour déclencher un téléchargement de fichier
+    # Return a response configured to trigger a file download
     return Response(
         json_data,
         mimetype="application/json",
