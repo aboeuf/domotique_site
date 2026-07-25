@@ -635,7 +635,7 @@ document.getElementById('exportCsvBtn').addEventListener('click', function() {
     const tempPoints = historyChart.data.datasets[0].data;
     const humPoints = historyChart.data.datasets[1].data;
 
-    let csvRows = ['Date et Heure,Temperature (°C),Humidite (%)'];
+    let csvRows = ['time,temperature,humidity'];
 
     for (let i = 0; i < tempPoints.length; i++) {
         const pointDate = new Date(tempPoints[i].x);
