@@ -6,12 +6,12 @@
     {% if devices %}
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for ieee, state in devices.items() %}
-                {% set role_lower = (state.role_name or '').lower() %}
-                {% if 'thermom' in role_lower %}
+                {% set rid = state.role_id %}
+                {% if rid == 1 %}
                     {% set icon_class = 'bi-thermometer-half' %}
-                {% elif 'éclairage' in role_lower or 'lumière' in role_lower or 'lampe' in role_lower or 'light' in role_lower %}
+                {% elif rid == 2 or rid == 3 %}
                     {% set icon_class = 'bi-lightbulb' %}
-                {% elif 'volet' in role_lower or 'store' in role_lower or 'shutter' in role_lower %}
+                {% elif rid == 4 %}
                     {% set icon_class = 'bi-door-open' %}
                 {% else %}
                     {% set icon_class = 'bi-motherboard' %}

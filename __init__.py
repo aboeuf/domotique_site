@@ -72,12 +72,12 @@ def domotique_devices():
         with open(state_path, "r") as f:
             devices = json.load(f)
 
-    # Fetch database info for each device (device name, room name, role name)
+    # Fetch database info for each device (device name, room name, role name, role id)
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
     query = """
-        SELECT d.ieee_address, d.name AS device_name, r.name AS room_name, dr.name AS role_name
+        SELECT d.ieee_address, d.name AS device_name, r.name AS room_name, dr.name AS role_name, d.role_id
         FROM devices d
         LEFT JOIN rooms r ON d.room_id = r.id
         LEFT JOIN device_roles dr ON d.role_id = dr.id
@@ -96,6 +96,7 @@ def domotique_devices():
         state["device_name"] = db_info.get("device_name")
         state["room_name"] = db_info.get("room_name")
         state["role_name"] = db_info.get("role_name")
+        state["role_id"] = db_info.get("role_id")
 
     return render_template("domotique_devices.html", devices=devices)
 
