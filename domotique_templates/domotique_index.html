@@ -20,12 +20,12 @@
         </h1>
         <div id="roomsGrid" class="row row-cols-1 row-cols-md-3 g-4">
             {% for mesure in mesures %}
-                <div class="col" data-sort-id="{{ mesure.sensor_id }}">
+                <div class="col" data-sort-id="{{ mesure.device_id }}">
                     <div class="card h-100 shadow-sm hvr-pointer"
                          data-bs-toggle="modal"
                          data-bs-target="#historyModal"
-                         data-sensor-id="{{ mesure.sensor_id }}"
-                         data-sensor-name="{{ mesure.piece }}">
+                         data-device-id="{{ mesure.device_id }}"
+                         data-device-name="{{ mesure.piece }}">
                         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                             <h5 class="card-title mb-0 text-truncate" style="max-width: 65%;">
                                 <i class="bi bi-house-door me-2"></i>{{ mesure.piece }}
@@ -97,7 +97,7 @@
                                        max-width: 280px;
                                        text-overflow: ellipsis">
                             {% for m in mesures %}
-                                <option value="{{ m.sensor_id }}">{{ m.piece }}</option>
+                                <option value="{{ m.device_id }}">{{ m.piece }}</option>
                             {% endfor %}
                         </select>
                     </h5>
@@ -405,8 +405,8 @@ timePreset.addEventListener('change', function() {
 
 customValueSelect.addEventListener('change', updateChartBounds);
 
-function loadHistory(sensorId) {
-    fetch(`/domotique/api/history/${sensorId}`)
+function loadHistory(deviceId) {
+    fetch(`/domotique/api/history/${deviceId}`)
         .then(response => response.json())
         .then(data => {
             if (data.length === 0) {
@@ -569,13 +569,13 @@ historyModal.addEventListener('show.bs.modal', function (event) {
     const card = event.relatedTarget;
     if (!card) return;
 
-    const sensorId = card.getAttribute('data-sensor-id');
-    modalPieceSelect.value = sensorId;
+    const deviceId = card.getAttribute('data-device-id');
+    modalPieceSelect.value = deviceId;
     
     timePreset.value = '24h';
     customSelectContainer.classList.add('d-none');
     
-    loadHistory(sensorId);
+    loadHistory(deviceId);
 });
 
 modalPieceSelect.addEventListener('change', function() {

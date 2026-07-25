@@ -19,12 +19,12 @@ def domotique_index():
 
     query = """
         WITH ranked_measurements AS (
-            SELECT t1.*, COALESCE(r.name, s.name) AS piece,
-                   ROW_NUMBER() OVER (PARTITION BY t1.sensor_id ORDER BY t1.timestamp DESC) as rn
+            SELECT t1.*, COALESCE(r.name, d.name) AS piece,
+                   ROW_NUMBER() OVER (PARTITION BY t1.device_id ORDER BY t1.timestamp DESC) as rn
             FROM thermometer_data t1
-            INNER JOIN sensors s ON t1.sensor_id = s.ieee_address
-            LEFT JOIN rooms r ON s.room_id = r.id
-            WHERE s.role_id = 1
+            INNER JOIN devices d ON t1.device_id = d.ieee_address
+            LEFT JOIN rooms r ON d.room_id = r.id
+            WHERE d.role_id = 1
         )
         SELECT * FROM ranked_measurements WHERE rn = 1
         ORDER BY piece ASC
@@ -38,9 +38,9 @@ def domotique_index():
     return render_template("domotique_index.html", mesures=mesures)
 
 
-@domotique_bp.route("/api/history/<sensor_id>")
+@domotique_bp.route("/api/history/<device_id>")
 @site_permission_required("domotique")
-def domotique_history(sensor_id):
+def domotique_history(device_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
@@ -48,10 +48,10 @@ def domotique_history(sensor_id):
     query = """
         SELECT timestamp, temperature, humidity 
         FROM thermometer_data 
-        WHERE sensor_id = %s
+        WHERE device_id = %s
         ORDER BY timestamp ASC
     """
-    cursor.execute(query, (sensor_id,))
+    cursor.execute(query, (device_id,))
     history = cursor.fetchall()
 
     cursor.close()
@@ -74,12 +74,12 @@ def domotique_export_json():
 
     # Query to retrieve ALL history with associated room names
     query = """
-        SELECT t.timestamp, t.sensor_id, COALESCE(r.name, s.name) AS piece, 
+        SELECT t.timestamp, t.device_id, COALESCE(r.name, d.name) AS piece, 
                t.temperature, t.humidity, t.battery, t.linkquality
         FROM thermometer_data t
-        INNER JOIN sensors s ON t.sensor_id = s.ieee_address
-        LEFT JOIN rooms r ON s.room_id = r.id
-        WHERE s.role_id = 1
+        INNER JOIN devices d ON t.device_id = d.ieee_address
+        LEFT JOIN rooms r ON d.room_id = r.id
+        WHERE d.role_id = 1
         ORDER BY t.timestamp DESC
     """
     cursor.execute(query)
