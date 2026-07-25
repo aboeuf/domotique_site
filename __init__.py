@@ -14,6 +14,12 @@ domotique_bp = Blueprint(
 @domotique_bp.route("/")
 @site_permission_required("domotique")
 def domotique_index():
+    return render_template("domotique_index.html")
+
+
+@domotique_bp.route("/thermometres")
+@site_permission_required("domotique")
+def domotique_thermometres():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
@@ -35,7 +41,31 @@ def domotique_index():
     cursor.close()
     conn.close()
 
-    return render_template("domotique_index.html", mesures=mesures)
+    return render_template("domotique_thermometers.html", mesures=mesures)
+
+
+@domotique_bp.route("/pieces")
+@site_permission_required("domotique")
+def domotique_pieces():
+    return render_template("section_placeholder.html", section_name="Pièces")
+
+
+@domotique_bp.route("/eclairage")
+@site_permission_required("domotique")
+def domotique_eclairage():
+    return render_template("section_placeholder.html", section_name="Éclairage")
+
+
+@domotique_bp.route("/volets")
+@site_permission_required("domotique")
+def domotique_volets():
+    return render_template("section_placeholder.html", section_name="Volets")
+
+
+@domotique_bp.route("/appareils")
+@site_permission_required("domotique")
+def domotique_appareils():
+    return render_template("section_placeholder.html", section_name="Appareils")
 
 
 @domotique_bp.route("/api/history/<device_id>")
@@ -44,7 +74,6 @@ def domotique_history(device_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Query to retrieve history
     query = """
         SELECT timestamp, temperature, humidity 
         FROM thermometer_data 
@@ -57,8 +86,6 @@ def domotique_history(device_id):
     cursor.close()
     conn.close()
 
-    # MySQL datetime type is not serializable to JSON by default,
-    # we convert timestamps to ISO format strings.
     for row in history:
         if row["timestamp"]:
             row["timestamp"] = row["timestamp"].isoformat()
@@ -72,7 +99,6 @@ def domotique_export_json():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Query to retrieve ALL history with associated room names
     query = """
         SELECT t.timestamp, t.device_id, COALESCE(r.name, d.name) AS piece, 
                t.temperature, t.humidity, t.battery, t.linkquality
@@ -88,15 +114,12 @@ def domotique_export_json():
     cursor.close()
     conn.close()
 
-    # Convert datetime objects to ISO strings for JSON
     for row in history:
         if row["timestamp"]:
             row["timestamp"] = row["timestamp"].isoformat()
 
-    # Serialize to clean JSON string (with indentation for readability)
     json_data = json.dumps(history, indent=4, ensure_ascii=False)
 
-    # Return a response configured to trigger a file download
     return Response(
         json_data,
         mimetype="application/json",
