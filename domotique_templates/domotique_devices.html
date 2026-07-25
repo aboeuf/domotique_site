@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Domotique - Appareils{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Appareils</h1>
+    {% if devices %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            {% for ieee, state in devices.items() %}
+                {% set role_lower = (state.role_name or '').lower() %}
+                {% if 'thermom' in role_lower %}
+                    {% set icon_class = 'bi-thermometer-half' %}
+                {% elif 'éclairage' in role_lower or 'lumière' in role_lower or 'lampe' in role_lower or 'light' in role_lower %}
+                    {% set icon_class = 'bi-lightbulb' %}
+                {% elif 'volet' in role_lower or 'store' in role_lower or 'shutter' in role_lower %}
+                    {% set icon_class = 'bi-door-open' %}
+                {% else %}
+                    {% set icon_class = 'bi-motherboard' %}
+                {% endif %}
+                <div class="col">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0 text-truncate" style="max-width: 80%;">
+                                <i class="{{ icon_class }} me-2"></i>{{ ieee }}
+                            </h5>
+                            {% if state.linkquality is defined %}
+                            <span class="badge bg-info">
+                                <i class="bi bi-wifi me-1"></i>{{ state.linkquality }}
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="card-body">
+                            <ul class="list-unstyled mb-0">
+                                <li><strong>Pièce :</strong> {{ state.room_name or '?' }}</li>
+                                <li><strong>Rôle :</strong> {{ state.role_name or '?' }}</li>
+                                {% if state.device_name %}
+                                <li><strong>Nom :</strong> {{ state.device_name }}</li>
+                                {% endif %}
+                                {% if state.battery is defined %}
+                                <li><strong>Batterie :</strong> {{ state.battery }}%</li>
+                                {% endif %}
+                                {% if state.temperature is defined %}
+                                <li><strong>Température :</strong> {{ state.temperature }}°C</li>
+                                {% endif %}
+                                {% if state.humidity is defined %}
+                                <li><strong>Humidité :</strong> {{ state.humidity }}%</li>
+                                {% endif %}
+                                {% if state.state is defined %}
+                                <li><strong>État :</strong> {{ state.state }}</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>Aucun appareil trouvé ou le fichier d'état est introuvable.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

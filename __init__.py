@@ -1,4 +1,5 @@
 import json
+import os
 from flask import Blueprint, render_template, jsonify, Response
 from app import get_db_connection
 from utils import site_permission_required
@@ -62,10 +63,52 @@ def domotique_volets():
     return render_template("section_placeholder.html", section_name="Volets")
 
 
-@domotique_bp.route("/appareils")
+@domotique_bp.route("/devices")
 @site_permission_required("domotique")
-def domotique_appareils():
-    return render_template("section_placeholder.html", section_name="Appareils")
+def domotique_devices():
+    state_path = os.environ.get("Z2M_STATE_PATH")
+    devices = {}
+    if state_path and os.path.exists(state_path):
+        with open(state_path, "r") as f:
+            devices = json.load(f)
+
+    # Fetch database info for each device (device name, room name, role name)
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    query = """
+        SELECT d.ieee_address, d.name AS device_name, r.name AS room_name, dr.name AS role_name
+        FROM devices d
+        LEFT JOIN rooms r ON d.room_id = r.id
+        LEFT JOIN device_roles dr ON d.role_id = dr.id
+    """
+    cursor.execute(query)
+    db_devices = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Build a lookup keyed by ieee_address
+    db_lookup = {row["ieee_address"]: row for row in db_devices}
+
+    # Merge database fields into each device
+    for ieee, state in devices.items():
+        db_info = db_lookup.get(ieee, {})
+        state["device_name"] = db_info.get("device_name")
+        state["room_name"] = db_info.get("room_name")
+        state["role_name"] = db_info.get("role_name")
+
+    return render_template("domotique_devices.html", devices=devices)
+
+
+@domotique_bp.route("/api/devices/state")
+@site_permission_required("domotique")
+def api_devices_state():
+    state_path = os.environ.get("Z2M_STATE_PATH")
+    if not state_path or not os.path.exists(state_path):
+        return jsonify({"error": "State file not found"}), 404
+    with open(state_path, "r") as f:
+        data = json.load(f)
+    return jsonify(data)
 
 
 @domotique_bp.route("/api/history/<device_id>")
