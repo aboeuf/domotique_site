@@ -12,6 +12,51 @@ domotique_bp = Blueprint(
 )
 
 
+def get_friendly_names_mapping():
+    """Régénère le mapping (IEEE address -> friendly_name) depuis configuration.yaml."""
+    state_path = os.environ.get("Z2M_STATE_PATH")
+    if not state_path:
+        return {}
+
+    config_path = os.path.join(os.path.dirname(state_path), "configuration.yaml")
+    mapping = {}
+
+    if not os.path.exists(config_path):
+        return mapping
+
+    # 1. Tentative d'ouverture et de parsing via PyYAML
+    try:
+        import yaml
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_data = yaml.safe_load(f) or {}
+            devices = config_data.get("devices", {})
+            for ieee, dev_info in devices.items():
+                if isinstance(dev_info, dict) and "friendly_name" in dev_info:
+                    mapping[ieee] = dev_info["friendly_name"]
+        return mapping
+    except ImportError:
+        # 2. Parseur de secours sans dépendance externe si PyYAML n'est pas installé
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                current_ieee = None
+                for line in f:
+                    line_str = line.strip()
+                    # Détection d'une clé d'adresse IEEE (ex: '0x001788010f138966':)
+                    if line_str.startswith(("'0x", '"0x', "0x")) and ":" in line_str:
+                        current_ieee = line_str.split(":")[0].strip("'\" ")
+                    elif current_ieee and "friendly_name:" in line_str:
+                        fname = line_str.split("friendly_name:", 1)[1].strip().strip("'\"")
+                        mapping[current_ieee] = fname
+                        current_ieee = None
+            return mapping
+        except Exception as e:
+            print(f"Erreur lors de la lecture (fallback) de {config_path}: {e}")
+    except Exception as e:
+        print(f"Erreur lors de la lecture de {config_path}: {e}")
+
+    return mapping
+
+
 @domotique_bp.route("/")
 @site_permission_required("domotique")
 def domotique_index():
@@ -90,13 +135,17 @@ def domotique_devices():
     # Build a lookup keyed by ieee_address
     db_lookup = {row["ieee_address"]: row for row in db_devices}
 
-    # Merge database fields into each device
+    # Retrieve friendly name mapping synchronously from configuration.yaml
+    friendly_map = get_friendly_names_mapping()
+
+    # Merge database fields and MQTT friendly name into each device
     for ieee, state in devices.items():
         db_info = db_lookup.get(ieee, {})
         state["device_name"] = db_info.get("device_name")
         state["room_name"] = db_info.get("room_name")
         state["role_name"] = db_info.get("role_name")
         state["role_id"] = db_info.get("role_id")
+        state["friendly_name"] = friendly_map.get(ieee, "")
 
     return render_template("domotique_devices.html", devices=devices)
 

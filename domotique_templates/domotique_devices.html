@@ -16,9 +16,27 @@
                 {% else %}
                     {% set icon_class = 'bi-motherboard' %}
                 {% endif %}
+
+                {# Compute expected friendly name #}
+                {% set role_name = state.role_name or '' %}
+                {% set room_name = state.room_name or '' %}
+                {% set device_name = state.device_name or '' %}
+                {% set friendly_name = state.get('friendly_name') or '' %}
+                {% if device_name %}
+                    {% set expected = role_name ~ ' - ' ~ room_name ~ ' - ' ~ device_name %}
+                {% else %}
+                    {% set expected = role_name ~ ' - ' ~ room_name %}
+                {% endif %}
+                {# Only consider a mismatch if we actually have a friendly_name #}
+                {% if friendly_name %}
+                    {% set mismatch = (expected != friendly_name) %}
+                {% else %}
+                    {% set mismatch = false %}
+                {% endif %}
+
                 <div class="col">
-                    <div class="card h-100 shadow-sm">
-                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <div class="card h-100 shadow-sm{% if mismatch %} border-danger{% endif %}">
+                        <div class="card-header {% if mismatch %}bg-danger{% else %}bg-dark{% endif %} text-white d-flex justify-content-between align-items-center">
                             <h5 class="card-title mb-0 text-truncate" style="max-width: 80%;">
                                 <i class="{{ icon_class }} me-2"></i>{{ ieee }}
                             </h5>
@@ -34,6 +52,12 @@
                                 <li><strong>Rôle :</strong> {{ state.role_name or '?' }}</li>
                                 {% if state.device_name %}
                                 <li><strong>Nom :</strong> {{ state.device_name }}</li>
+                                {% if mismatch and friendly_name %}
+                                <li class="text-danger"><strong>Nom Z2M :</strong> {{ friendly_name }}</li>
+                                {% endif %}
+                                {% endif %}
+                                {% if not state.device_name and mismatch and friendly_name %}
+                                <li class="text-danger"><strong>Nom Z2M :</strong> {{ friendly_name }}</li>
                                 {% endif %}
                                 {% if state.battery is defined %}
                                 <li><strong>Batterie :</strong> {{ state.battery }}%</li>
