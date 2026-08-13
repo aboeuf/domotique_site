@@ -36,12 +36,12 @@
 
                 <div class="col">
                     <div class="card h-100 shadow-sm{% if mismatch %} border-danger{% endif %}">
-                        <div class="card-header {% if mismatch %}bg-danger{% else %}bg-dark{% endif %} text-white d-flex justify-content-between align-items-center">
-                            <h5 class="card-title mb-0 text-truncate" style="max-width: 80%;">
-                                <i class="{{ icon_class }} me-2"></i>{{ ieee }}
+                        <div class="card-header {% if mismatch %}bg-danger{% else %}bg-dark{% endif %} text-white d-flex justify-content-between align-items-center flex-wrap gap-1">
+                            <h5 class="card-title mb-0 me-auto">
+                                <i class="{{ icon_class }} me-2"></i>{{ state.ieee_display or ieee }}
                             </h5>
                             {% if state.linkquality is defined %}
-                            <span class="badge bg-info">
+                            <span class="badge bg-info ms-auto">
                                 <i class="bi bi-wifi me-1"></i>{{ state.linkquality }}
                             </span>
                             {% endif %}
@@ -67,6 +67,9 @@
                                 {% endif %}
                                 {% if state.humidity is defined %}
                                 <li><strong>Humidité :</strong> {{ state.humidity }}%</li>
+                                {% endif %}
+                                {% if state.position is defined and state.position is not none %}
+                                <li><strong>Position :</strong> {{ state.position }}%</li>
                                 {% endif %}
                                 {% if state.state is defined %}
                                 <li><strong>État :</strong> {{ state.state }}</li>

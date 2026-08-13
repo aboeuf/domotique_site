@@ -24,8 +24,8 @@
                          data-bs-target="#historyModal"
                          data-device-id="{{ mesure.device_id }}"
                          data-device-name="{{ mesure.piece }}">
-                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                            <h5 class="card-title mb-0 text-truncate" style="max-width: 65%;">
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center flex-wrap gap-1">
+                            <h5 class="card-title mb-0 me-auto">
                                 <i class="bi bi-house-door me-2"></i>{{ mesure.piece }}
                             </h5>
                             <div class="sort-controls d-none">
@@ -42,7 +42,7 @@
                                     <i class="bi bi-chevron-right"></i>
                                 </button>
                             </div>
-                            <small class="text-muted card-lqi" style="color: #adb5bd !important;">LQI: {{ mesure.linkquality }}</small>
+                            <small class="text-muted card-lqi ms-auto" style="color: #adb5bd !important;">LQI: {{ mesure.linkquality }}</small>
                         </div>
                         <div class="card-body text-center py-4">
                             <div class="display-4 fw-bold mb-2 dashboard-temp"

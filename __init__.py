@@ -1,6 +1,8 @@
 import json
 import os
-from flask import Blueprint, render_template, jsonify, Response
+import threading
+import time
+from flask import Blueprint, render_template, jsonify, Response, request
 from app import get_db_connection
 from utils import site_permission_required
 
@@ -10,6 +12,153 @@ domotique_bp = Blueprint(
     template_folder="domotique_templates",
     url_prefix="/domotique",
 )
+
+MQTT_BROKER_HOST = os.environ.get("MQTT_BROKER_HOST", "localhost")
+MQTT_BROKER_PORT = int(os.environ.get("MQTT_BROKER_PORT", 1883))
+
+# In-memory cache for device states updated via MQTT
+MQTT_DEVICE_STATES = {}
+_mqtt_thread_started = False
+_mqtt_thread_lock = threading.Lock()
+
+
+def load_initial_states():
+    """Initializes MQTT_DEVICE_STATES cache using the Z2M state file on disk if available."""
+    state_path = os.environ.get("Z2M_STATE_PATH")
+    if not state_path or not os.path.exists(state_path):
+        return
+
+    try:
+        with open(state_path, "r", encoding="utf-8") as f:
+            initial_data = json.load(f)
+            if isinstance(initial_data, dict):
+                MQTT_DEVICE_STATES.update(initial_data)
+    except Exception as e:
+        print(f"Erreur lors du chargement des états initiaux depuis {state_path}: {e}")
+
+
+# Pre-fill states cache from Z2M_STATE_PATH file
+load_initial_states()
+
+
+def _on_mqtt_message(client, userdata, msg):
+    """Callback triggered when an MQTT message is received."""
+    try:
+        topic = msg.topic
+        # Zigbee2MQTT topics are structured as zigbee2mqtt/<device_id_or_friendly_name>
+        parts = topic.split("/")
+        if len(parts) == 2 and parts[0] == "zigbee2mqtt":
+            device_key = parts[1]
+            if device_key in ["bridge", "logging"]:
+                return
+            payload_str = msg.payload.decode("utf-8")
+            if not payload_str:
+                return
+            try:
+                data = json.loads(payload_str)
+                if isinstance(data, dict):
+                    if device_key not in MQTT_DEVICE_STATES:
+                        MQTT_DEVICE_STATES[device_key] = {}
+                    MQTT_DEVICE_STATES[device_key].update(data)
+
+                    # Also update by IEEE address if device_key is a friendly name
+                    friendly_map = get_friendly_names_mapping()
+                    for ieee, fname in friendly_map.items():
+                        if fname == device_key:
+                            if ieee not in MQTT_DEVICE_STATES:
+                                MQTT_DEVICE_STATES[ieee] = {}
+                            MQTT_DEVICE_STATES[ieee].update(data)
+                            break
+            except json.JSONDecodeError:
+                pass
+    except Exception as e:
+        print(f"Erreur lors du traitement du message MQTT: {e}")
+
+
+def _bg_shutter_poller():
+    """Background loop that polls physical roller shutter states via MQTT every second."""
+    while True:
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            query = "SELECT ieee_address FROM devices WHERE role_id = 4"
+            cursor.execute(query)
+            shutter_devices = cursor.fetchall()
+            cursor.close()
+            conn.close()
+
+            friendly_map = get_friendly_names_mapping()
+
+            for dev in shutter_devices:
+                ieee = dev["ieee_address"]
+                friendly_name = friendly_map.get(ieee)
+                target = friendly_name if friendly_name else ieee
+                request_device_state(target)
+                if friendly_name:
+                    request_device_state(ieee)
+        except Exception as e:
+            print(f"Erreur dans le bouclage de poll des volets: {e}")
+        time.sleep(1)
+
+
+def start_mqtt_state_listener():
+    """Starts a background thread listening for Zigbee2MQTT state updates and polling shutters."""
+    global _mqtt_thread_started
+    with _mqtt_thread_lock:
+        if _mqtt_thread_started:
+            return
+        _mqtt_thread_started = True
+
+    def run_listener():
+        import paho.mqtt.client as mqtt
+        try:
+            try:
+                client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+            except AttributeError:
+                client = mqtt.Client()
+
+            client.on_message = _on_mqtt_message
+            client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
+            client.subscribe("zigbee2mqtt/#")
+
+            # Start background shutter state polling thread
+            poller_thread = threading.Thread(target=_bg_shutter_poller, daemon=True)
+            poller_thread.start()
+
+            client.loop_forever()
+        except Exception as e:
+            print(f"Erreur dans le thread de souscription MQTT: {e}")
+
+    thread = threading.Thread(target=run_listener, daemon=True)
+    thread.start()
+
+
+# Start background MQTT state listener
+start_mqtt_state_listener()
+
+
+def publish_mqtt_message(topic, payload):
+    """Publie un message MQTT vers le broker."""
+    try:
+        import paho.mqtt.client as mqtt
+        try:
+            client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        except AttributeError:
+            client = mqtt.Client()
+        client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
+        client.publish(topic, json.dumps(payload))
+        client.disconnect()
+        return True
+    except Exception as e:
+        print(f"Erreur d'envoi MQTT vers {topic}: {e}")
+        return False
+
+
+def request_device_state(device_key):
+    """Actively requests state and position update from Zigbee2MQTT for a given device key (IEEE address or friendly name)."""
+    topic = f"zigbee2mqtt/{device_key}/get"
+    payload = {"state": "", "position": ""}
+    publish_mqtt_message(topic, payload)
 
 
 def get_friendly_names_mapping():
@@ -105,19 +254,96 @@ def domotique_eclairage():
 @domotique_bp.route("/volets")
 @site_permission_required("domotique")
 def domotique_volets():
-    return render_template("section_placeholder.html", section_name="Volets")
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    query = """
+        SELECT d.ieee_address, d.name AS device_name, r.name AS room_name
+        FROM devices d
+        LEFT JOIN rooms r ON d.room_id = r.id
+        WHERE d.role_id = 4
+        ORDER BY r.name ASC, d.name ASC
+    """
+    cursor.execute(query)
+    db_volets = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    states = MQTT_DEVICE_STATES
+    friendly_map = get_friendly_names_mapping()
+
+    volets = []
+    for row in db_volets:
+        ieee = row["ieee_address"]
+        friendly_name = friendly_map.get(ieee)
+
+        # Query state on page render
+        request_device_state(friendly_name or ieee)
+
+        st = states.get(ieee) or (states.get(friendly_name) if friendly_name else {}) or {}
+
+        room_name = row["room_name"]
+        device_name = row["device_name"]
+
+        if room_name and device_name:
+            piece = f"{room_name} - {device_name}"
+        else:
+            piece = room_name or device_name or ieee
+
+        volets.append({
+            "ieee_address": ieee,
+            "friendly_name": friendly_name or "",
+            "piece": piece,
+            "device_name": device_name,
+            "state": st.get("state", "UNKNOWN"),
+            "position": st.get("position", 0),
+            "motor_run_status": st.get("motor_run_status", "idle"),
+            "linkquality": st.get("linkquality")
+        })
+
+    return render_template("domotique_volets.html", volets=volets)
+
+
+@domotique_bp.route("/api/volets/control", methods=["POST"])
+@site_permission_required("domotique")
+def api_volets_control():
+    data = request.get_json() or {}
+    ieee_address = data.get("ieee_address")
+    action = data.get("action")  # 'OPEN', 'CLOSE', 'STOP', or None if position is given
+    position = data.get("position")  # integer 0-100 or None
+
+    if not ieee_address:
+        return jsonify({"success": False, "error": "Adresse IEEE manquante"}), 400
+
+    friendly_map = get_friendly_names_mapping()
+    target = friendly_map.get(ieee_address, ieee_address)
+
+    topic = f"zigbee2mqtt/{target}/set"
+    payload = {}
+
+    if action in ["OPEN", "CLOSE", "STOP"]:
+        payload["state"] = action
+    elif position is not None:
+        try:
+            payload["position"] = int(position)
+        except ValueError:
+            return jsonify({"success": False, "error": "Position invalide"}), 400
+    else:
+        return jsonify({"success": False, "error": "Action ou position requise"}), 400
+
+    success = publish_mqtt_message(topic, payload)
+    if success:
+        request_device_state(target)
+        return jsonify({"success": True, "topic": topic, "payload": payload})
+    else:
+        return jsonify({"success": False, "error": "Échec de l'envoi MQTT"}), 500
 
 
 @domotique_bp.route("/devices")
 @site_permission_required("domotique")
 def domotique_devices():
-    state_path = os.environ.get("Z2M_STATE_PATH")
-    devices = {}
-    if state_path and os.path.exists(state_path):
-        with open(state_path, "r") as f:
-            devices = json.load(f)
+    devices = MQTT_DEVICE_STATES
 
-    # Fetch database info for each device (device name, room name, role name, role id)
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
@@ -132,15 +358,16 @@ def domotique_devices():
     cursor.close()
     conn.close()
 
-    # Build a lookup keyed by ieee_address
     db_lookup = {row["ieee_address"]: row for row in db_devices}
-
-    # Retrieve friendly name mapping synchronously from configuration.yaml
     friendly_map = get_friendly_names_mapping()
+    reverse_friendly_map = {fname: ieee for ieee, fname in friendly_map.items()}
 
     # Merge database fields and MQTT friendly name into each device
-    for ieee, state in devices.items():
+    for key, state in devices.items():
+        ieee = key if key in db_lookup else reverse_friendly_map.get(key, key)
         db_info = db_lookup.get(ieee, {})
+
+        state["ieee_display"] = ieee
         state["device_name"] = db_info.get("device_name")
         state["room_name"] = db_info.get("room_name")
         state["role_name"] = db_info.get("role_name")
@@ -153,12 +380,7 @@ def domotique_devices():
 @domotique_bp.route("/api/devices/state")
 @site_permission_required("domotique")
 def api_devices_state():
-    state_path = os.environ.get("Z2M_STATE_PATH")
-    if not state_path or not os.path.exists(state_path):
-        return jsonify({"error": "State file not found"}), 404
-    with open(state_path, "r") as f:
-        data = json.load(f)
-    return jsonify(data)
+    return jsonify(MQTT_DEVICE_STATES)
 
 
 @domotique_bp.route("/api/history/<device_id>")

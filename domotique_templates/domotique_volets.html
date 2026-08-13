@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block title %}Domotique - Volets{% endblock %}
+{% block content %}
+    <style>
+        .is-sorting .sort-controls { display: inline-block !important; }
+        .is-sorting .card-lqi { display: none !important; }
+        .is-sorting .card { border: 2px dashed #6c757d !important; opacity: 0.85; }
+        .shutter-slider::-webkit-slider-thumb { cursor: pointer; }
+    </style>
+    <div class="container mt-4">
+        <h1 class="mb-3">Volets Roulants</h1>
+        <div class="d-flex flex-wrap gap-2 mb-3 justify-content-between align-items-center">
+            <div>
+                <button id="toggleSortBtn" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-arrows-move me-1"></i>Organiser les volets
+                </button>
+            </div>
+            <div class="btn-group" role="group" aria-label="Commandes globales">
+                <button type="button" class="btn btn-primary btn-action-all" data-action="OPEN">
+                    <i class="bi bi-arrow-up-circle me-1"></i>Ouvrir tout
+                </button>
+                <button type="button" class="btn btn-danger btn-action-all" data-action="STOP">
+                    <i class="bi bi-stop-circle me-1"></i>Stop tout
+                </button>
+                <button type="button" class="btn btn-secondary btn-action-all" data-action="CLOSE">
+                    <i class="bi bi-arrow-down-circle me-1"></i>Fermer tout
+                </button>
+            </div>
+        </div>
+        <div id="voletsGrid" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            {% for volet in volets %}
+                <div class="col" data-sort-id="{{ volet.ieee_address }}">
+                    <div class="card h-100 shadow-sm" data-device-id="{{ volet.ieee_address }}" data-friendly-name="{{ volet.friendly_name }}">
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center flex-wrap gap-1">
+                            <h5 class="card-title mb-0 me-auto">
+                                <i class="bi bi-window-split me-2"></i>{{ volet.piece }}
+                            </h5>
+                            <div class="sort-controls d-none">
+                                <button type="button"
+                                        class="btn btn-sm btn-secondary py-0 px-1 move-btn me-1"
+                                        data-dir="up"
+                                        title="Déplacer vers la gauche / le haut">
+                                    <i class="bi bi-chevron-left"></i>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm btn-secondary py-0 px-1 move-btn"
+                                        data-dir="down"
+                                        title="Déplacer vers la droite / le bas">
+                                    <i class="bi bi-chevron-right"></i>
+                                </button>
+                            </div>
+                            {% if volet.linkquality is not none %}
+                            <small class="text-muted card-lqi ms-auto" style="color: #adb5bd !important;">LQI: <span class="lqi-val">{{ volet.linkquality }}</span></small>
+                            {% endif %}
+                        </div>
+                        <div class="card-body py-3">
+                            <div class="text-center mb-3">
+                                <span class="fs-4 fw-bold position-badge text-primary" id="pos-text-{{ volet.ieee_address }}">
+                                    {{ volet.position }}%
+                                </span>
+                                <span class="text-muted ms-2 small" id="state-text-{{ volet.ieee_address }}">
+                                    ({{ volet.state }})
+                                </span>
+                            </div>
+
+                            <div class="progress mb-3" style="height: 12px;">
+                                <div id="progress-{{ volet.ieee_address }}"
+                                     class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                                     role="progressbar"
+                                     style="width: {{ volet.position }}%;"
+                                     aria-valuenow="{{ volet.position }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="slider-{{ volet.ieee_address }}" class="form-label small text-muted mb-1">Ajuster la position :</label>
+                                <input type="range"
+                                       class="form-range shutter-slider"
+                                       id="slider-{{ volet.ieee_address }}"
+                                       min="0"
+                                       max="100"
+                                       value="{{ volet.position }}"
+                                       data-ieee="{{ volet.ieee_address }}">
+                            </div>
+
+                            <div class="btn-group w-100" role="group">
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-action"
+                                        data-ieee="{{ volet.ieee_address }}"
+                                        data-action="OPEN">
+                                    <i class="bi bi-arrow-up-circle me-1"></i>Ouvrir
+                                </button>
+                                <button type="button"
+                                        class="btn btn-outline-danger btn-action"
+                                        data-ieee="{{ volet.ieee_address }}"
+                                        data-action="STOP">
+                                    <i class="bi bi-stop-circle me-1"></i>Stop
+                                </button>
+                                <button type="button"
+                                        class="btn btn-outline-secondary btn-action"
+                                        data-ieee="{{ volet.ieee_address }}"
+                                        data-action="CLOSE">
+                                    <i class="bi bi-arrow-down-circle me-1"></i>Fermer
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="col-12">
+                    <div class="alert alert-warning" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>Aucun volet roulant n'est configuré dans la base de données.
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        const gridContainer = document.getElementById('voletsGrid');
+        const toggleSortBtn = document.getElementById('toggleSortBtn');
+
+        // Restore custom card ordering
+        const savedOrder = localStorage.getItem('domotique_volets_order');
+        if (savedOrder && gridContainer) {
+            const orderArray = JSON.parse(savedOrder);
+            const itemsMap = {};
+            gridContainer.querySelectorAll('[data-sort-id]').forEach(el => {
+                itemsMap[el.getAttribute('data-sort-id')] = el;
+            });
+            orderArray.forEach(id => {
+                if (itemsMap[id]) {
+                    gridContainer.appendChild(itemsMap[id]);
+                    delete itemsMap[id];
+                }
+            });
+            Object.values(itemsMap).forEach(el => {
+                gridContainer.appendChild(el);
+            });
+        }
+
+        // Reordering logic
+        if (toggleSortBtn && gridContainer) {
+            toggleSortBtn.addEventListener('click', function() {
+                gridContainer.classList.toggle('is-sorting');
+                if (gridContainer.classList.contains('is-sorting')) {
+                    this.innerHTML = '<i class="bi bi-check-lg me-1"></i>Enregistrer l\'ordre';
+                    this.classList.replace('btn-outline-secondary', 'btn-success');
+                } else {
+                    this.innerHTML = '<i class="bi bi-arrows-move me-1"></i>Organiser les volets';
+                    this.classList.replace('btn-success', 'btn-outline-secondary');
+                    saveCurrentOrder();
+                }
+            });
+
+            gridContainer.addEventListener('click', function(e) {
+                const btn = e.target.closest('.move-btn');
+                if (!btn) return;
+                
+                e.stopPropagation();
+                const colItem = btn.closest('[data-sort-id]');
+                const direction = btn.getAttribute('data-dir');
+                
+                if (direction === 'up') {
+                    const prev = colItem.previousElementSibling;
+                    if (prev && prev.hasAttribute('data-sort-id')) {
+                        gridContainer.insertBefore(colItem, prev);
+                    }
+                } else if (direction === 'down') {
+                    const next = colItem.nextElementSibling;
+                    if (next && next.hasAttribute('data-sort-id')) {
+                        gridContainer.insertBefore(colItem, next.nextElementSibling);
+                    }
+                }
+                saveCurrentOrder();
+            });
+        }
+
+        function saveCurrentOrder() {
+            const currentOrder = [];
+            gridContainer.querySelectorAll('[data-sort-id]').forEach(el => {
+                currentOrder.push(el.getAttribute('data-sort-id'));
+            });
+            localStorage.setItem('domotique_volets_order', JSON.stringify(currentOrder));
+        }
+
+        // Individual control actions (OPEN, CLOSE, STOP)
+        document.querySelectorAll('.btn-action').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const ieee = this.getAttribute('data-ieee');
+                const action = this.getAttribute('data-action');
+                sendControl(ieee, { action: action });
+            });
+        });
+
+        // Global control actions for all shutters
+        document.querySelectorAll('.btn-action-all').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const action = this.getAttribute('data-action');
+                gridContainer.querySelectorAll('[data-device-id]').forEach(card => {
+                    const ieee = card.getAttribute('data-device-id');
+                    sendControl(ieee, { action: action });
+                });
+            });
+        });
+
+        // Position sliders
+        document.querySelectorAll('.shutter-slider').forEach(slider => {
+            slider.addEventListener('change', function() {
+                const ieee = this.getAttribute('data-ieee');
+                const position = parseInt(this.value, 10);
+                sendControl(ieee, { position: position });
+            });
+        });
+
+        function sendControl(ieeeAddress, payload) {
+            payload.ieee_address = ieeeAddress;
+            fetch('/domotique/api/volets/control', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    alert("Erreur lors de la commande : " + (data.error || "Inconnue"));
+                }
+            })
+            .catch(err => {
+                console.error("Erreur de communication :", err);
+            });
+        }
+
+        // Real-time state updates polling
+        function updateShutterStates() {
+            fetch('/domotique/api/devices/state')
+                .then(res => res.json())
+                .then(states => {
+                    gridContainer.querySelectorAll('[data-device-id]').forEach(card => {
+                        const ieee = card.getAttribute('data-device-id');
+                        const friendlyName = card.getAttribute('data-friendly-name');
+                        const st = states[ieee] || (friendlyName ? states[friendlyName] : null);
+
+                        if (st) {
+                            const posText = document.getElementById(`pos-text-${ieee}`);
+                            const stateText = document.getElementById(`state-text-${ieee}`);
+                            const progressBar = document.getElementById(`progress-${ieee}`);
+                            const slider = document.getElementById(`slider-${ieee}`);
+                            const lqiSpan = card.querySelector('.lqi-val');
+
+                            if (st.position !== undefined && st.position !== null) {
+                                if (posText) posText.textContent = `${st.position}%`;
+                                if (progressBar) progressBar.style.width = `${st.position}%`;
+                                if (slider && document.activeElement !== slider) {
+                                    slider.value = st.position;
+                                }
+                            }
+                            if (st.state !== undefined && st.state !== null && stateText) {
+                                stateText.textContent = `(${st.state})`;
+                            }
+                            if (st.linkquality !== undefined && st.linkquality !== null && lqiSpan) {
+                                lqiSpan.textContent = st.linkquality;
+                            }
+                        }
+                    });
+                })
+                .catch(err => console.error("Erreur de mise à jour des états :", err));
+        }
+
+        // Poll every 500 milliseconds
+        setInterval(updateShutterStates, 500);
+    </script>
+{% endblock %}
